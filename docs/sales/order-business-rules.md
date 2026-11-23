@@ -1,0 +1,164 @@
+# Sales Module — Order Business Rules
+
+## 1. Order Status State Machine
+
+```
+           ┌─────────────┐
+           │    Draft    │◄──── Initial State
+           └──────┬──────┘
+                  │  Confirm (POST /orders/{id}/confirm)
+                  ▼
+           ┌─────────────┐
+           │  Confirmed  │
+           └──────┬──────┘
+                  │  (Shipment Module creates shipments)
+                  ▼
+           ┌─────────────┐
+           │  Processing │
+           └──────┬──────┘
+                  │
+         ┌────────┴────────┐
+         ▼                 ▼
+   ┌──────────┐     ┌──────────┐
+   │ Shipped  │     │ Delivered│
+   └──────────┘     └──────────┘
+
+   From any status (except Delivered):
+   ───────────────────────────────
+         ▼
+   ┌─────────────┐
+   │  Cancelled  │
+   └─────────────┘
+```
+
+### Valid Transitions
+
+| From       | To         | Trigger                      | Actor           |
+|------------|------------|------------------------------|-----------------|
+| Draft      | Confirmed  | POST /orders/{id}/confirm    | Staff, Manager  |
+| Draft      | Cancelled  | POST /orders/{id}/cancel     | Staff, Manager  |
+| Confirmed  | Processing | Shipment assigned (auto)     | System/Shipment |
+| Confirmed  | Cancelled  | POST /orders/{id}/cancel     | Manager         |
+| Processing | Shipped    | All shipments shipped (auto) | System/Shipment |
+| Processing | Cancelled  | POST /orders/{id}/cancel     | Manager         |
+| Shipped    | Delivered  | All shipments delivered (auto)| System/Shipment|
+| Any        | Cancelled  | POST /orders/{id}/cancel     | Manager*        |
+
+> **\*** Cancellation is blocked if any linked shipment has status `InTransit` or `Delivered`.
+
+---
+
+## 2. Item Editing Rules
+
+| Status     | Add Item | Update Item | Delete Item |
+|------------|----------|-------------|-------------|
+| Draft      | ✅ Yes   | ✅ Yes      | ✅ Yes      |
+| Confirmed  | ❌ No    | ❌ No       | ❌ No       |
+| Processing | ❌ No    | ❌ No       | ❌ No       |
+| Shipped    | ❌ No    | ❌ No       | ❌ No       |
+| Delivered  | ❌ No    | ❌ No       | ❌ No       |
+| Cancelled  | ❌ No    | ❌ No       | ❌ No       |
+
+> Items are locked once the order leaves `Draft`. Returns HTTP 409 Conflict.
+
+---
+
+## 3. Package Editing Rules
+
+| Status     | Add Package | Update Package | Delete Package |
+|------------|-------------|----------------|----------------|
+| Draft      | ✅ Yes      | ✅ Yes         | ✅ Yes         |
+| Confirmed  | ✅ Yes      | ✅ Yes         | ✅ Yes         |
+| Processing | ❌ No       | ❌ No          | ❌ No          |
+| Shipped    | ❌ No       | ❌ No          | ❌ No          |
+| Delivered  | ❌ No       | ❌ No          | ❌ No          |
+| Cancelled  | ❌ No       | ❌ No          | ❌ No          |
+
+---
+
+## 4. Address Editing Rules
+
+Addresses (Sender / Recipient) may be set or updated while the order is in `Draft` or `Confirmed` status. Returns HTTP 409 for other statuses.
+
+---
+
+## 5. Cancellation Rules
+
+```
+Cancellation is BLOCKED when:
+  - Any linked shipment has ShipmentStatus = "InTransit"  
+  - Any linked shipment has ShipmentStatus = "Delivered"
+
+Cancellation is ALLOWED when:
+  - Order is in Draft, Confirmed, or Processing
+  - No shipments are InTransit or Delivered
+  - CancellationReason is provided (required, min 5 chars)
+```
+
+Fields set on cancellation:
+- `OrderStatus = "Cancelled"`
+- `CancelledAt = DateTime.UtcNow`
+- `CancelledBy = current user identifier`
+- `CancellationReason = request.Reason`
+
+---
+
+## 6. Aggregate Recalculation
+
+The following order-level totals are recalculated automatically whenever a package is **added, updated, or deleted**:
+
+| Field             | Calculation                                     |
+|-------------------|-------------------------------------------------|
+| `TotalWeightKg`   | `SUM(packages.WeightKg)`                        |
+| `TotalVolumeM3`   | `SUM(packages.LengthCm × packages.WidthCm × packages.HeightCm) / 1_000_000` |
+| `DeclaredValue`   | `SUM(packages.DeclaredValue)`                   |
+| `PackageCount`    | `COUNT(packages)`                               |
+
+Item totals are recalculated whenever an item is **added, updated, or deleted**:
+
+| Field           | Calculation                                     |
+|-----------------|-------------------------------------------------|
+| `TotalAmount`   | `SUM(items.Quantity × items.UnitPrice)`         |
+| `TotalWeightKg` | Also considers `SUM(items.WeightKg × items.Quantity)` when no packages exist |
+| `ItemCount`     | `COUNT(items)`                                  |
+
+---
+
+## 7. Volumetric Weight Formula
+
+```
+VolumetricWeightKg = (LengthCm × WidthCm × HeightCm) / 5000
+```
+
+This is the standard logistics industry divisor for air freight volumetric weight conversion. The chargeable weight is typically `MAX(ActualWeightKg, VolumetricWeightKg)`.
+
+---
+
+## 8. Order Number Generation
+
+Order numbers are generated by `INumberSequenceService` using the `"ORDER"` scope.
+
+**Default Format:** `ORD-{YYYYMM}-{NUMBER:0000}`  
+**Example:** `ORD-202611-0001`
+
+The sequence resets monthly. The number is generated atomically before saving the order using a database row lock (SemaphoreSlim for in-memory, `SELECT … FOR UPDATE` semantics via EF update + optimistic concurrency for SQL Server).
+
+---
+
+## 9. Branch-Level Access Control
+
+- All order **queries** (`GET /orders`, `GET /orders/{id}`) filter by branches the authenticated user has access to.
+- If the user has no branch access configured, an empty list is returned.
+- Order **creation** requires a `BranchId` that the user has access to (or the user's default branch is used if not specified).
+- SuperAdmins bypass branch filtering.
+
+---
+
+## 10. Required Address Types
+
+| Address Type | Route Segment | Description              |
+|--------------|---------------|--------------------------|
+| `Sender`     | `/addresses/Sender`    | Pickup / origin address  |
+| `Recipient`  | `/addresses/Recipient` | Delivery / destination   |
+
+Both are optional at order creation but required before the order can be confirmed by business process convention.

@@ -1,0 +1,5 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Logistics.Shared.Contracts</RootNamespace>
+  </PropertyGroup>
+</Project>

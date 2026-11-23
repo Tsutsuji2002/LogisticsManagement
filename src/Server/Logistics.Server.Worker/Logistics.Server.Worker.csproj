@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <RootNamespace>Logistics.Server.Worker</RootNamespace>
+    <UserSecretsId>dotnet-Logistics.Server.Worker-c70eb661-79ab-4f6c-b5c1-40470a8df6d7</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Logistics.Server.Application\Logistics.Server.Application.csproj" />
+    <ProjectReference Include="..\Logistics.Server.Infrastructure\Logistics.Server.Infrastructure.csproj" />
+    <ProjectReference Include="..\Logistics.Server.Integrations\Logistics.Server.Integrations.csproj" />
+  </ItemGroup>
+</Project>
