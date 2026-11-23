@@ -140,12 +140,23 @@ The Logistics Management System implements Role-Based Access Control (RBAC) back
 | `inventory.serials.read` | View serialized items | ✓ | ✓ | | ✓ | | | ✓ |
 | `inventory.serials.manage` | Manage serial numbers | ✓ | ✓ | | ✓ | | | |
 | **Finance Module** | | | | | | | | |
-| `finance.rates.read` | View shipping rates | ✓ | | | | | ✓ | ✓ |
-| `finance.rates.manage` | Manage shipping rates | ✓ | | | | | ✓ | |
-| `finance.invoices.read` | View invoices | ✓ | | | | | ✓ | ✓ |
-| `finance.invoices.create` | Generate invoices | ✓ | | | | | ✓ | |
-| `finance.payments.manage` | Process payments | ✓ | | | | | ✓ | |
-| `finance.cod.manage` | Manage COD collections | ✓ | | | | | ✓ | |
+| `finance.rates.read` | View shipping rates & rules | ✓ | | | | | ✓ | ✓ |
+| `finance.rates.manage` | Manage shipping rate cards & rules | ✓ | | | | | ✓ | |
+| `finance.charges.read` | View shipment charges | ✓ | | | | | ✓ | ✓ |
+| `finance.charges.calculate` | Calculate shipping fee breakdowns | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ |
+| `finance.charges.adjust` | Add manual fee adjustments | ✓ | | | | | ✓ | |
+| `finance.invoices.read` | View invoices & billing statements | ✓ | | | | | ✓ | ✓ |
+| `finance.invoices.create` | Draft invoices & manage items | ✓ | | | | | ✓ | |
+| `finance.invoices.issue` | Issue formal legal invoices | ✓ | | | | | ✓ | |
+| `finance.invoices.cancel` | Cancel issued invoices | ✓ | | | | | ✓ | |
+| `finance.payments.read` | View payments & allocations | ✓ | | | | | ✓ | ✓ |
+| `finance.payments.manage` | Register payment receipts | ✓ | | | | | ✓ | |
+| `finance.payments.allocate` | Allocate payments to invoices | ✓ | | | | | ✓ | |
+| `finance.payments.reverse` | Reverse payment allocations | ✓ | | | | | ✓ | |
+| `finance.balances.read` | View customer balances & exposure | ✓ | ✓ | | | ✓ | ✓ | ✓ |
+| `finance.balances.reconcile` | Reconcile customer balances | ✓ | | | | | ✓ | |
+| `finance.ledger.read` | View general ledger audit journal | ✓ | | | | | ✓ | ✓ |
+| `finance.cod.manage` | Manage COD collections & remittance | ✓ | | | | | ✓ | |
 | **Notification Module** | | | | | | | | |
 | `notification.notifications.read`| View notifications | ✓ | ✓ | ✓ | | ✓ | | |
 | `notification.templates.manage`| Manage templates | ✓ | | | | | | |

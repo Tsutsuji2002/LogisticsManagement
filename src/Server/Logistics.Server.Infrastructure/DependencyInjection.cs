@@ -101,6 +101,15 @@ public static class DependencyInjection
         services.AddScoped<Application.Modules.Warehouse.Services.IInventoryService, InventoryService>();
         services.AddScoped<Application.Modules.Warehouse.Services.IParcelHandlingService, ParcelHandlingService>();
 
+        // Finance & Billing Module Services
+        services.AddScoped<Application.Modules.Finance.Services.IFinancialLedgerService, FinancialLedgerService>();
+        services.AddScoped<Application.Modules.Finance.Services.IRateManagementService, RateManagementService>();
+        services.AddScoped<Application.Modules.Finance.Services.IShippingFeeCalculationService, ShippingFeeCalculationService>();
+        services.AddScoped<Application.Modules.Finance.Services.IShipmentChargeService, ShipmentChargeService>();
+        services.AddScoped<Application.Modules.Finance.Services.IInvoiceService, InvoiceService>();
+        services.AddScoped<Application.Modules.Finance.Services.IPaymentService, PaymentService>();
+        services.AddScoped<Application.Modules.Finance.Services.ICustomerBalanceService, CustomerBalanceService>();
+
         return services;
     }
 }

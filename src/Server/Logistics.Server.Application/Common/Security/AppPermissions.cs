@@ -181,9 +181,20 @@ public static class AppPermissions
     {
         public const string RatesRead = "finance.rates.read";
         public const string RatesManage = "finance.rates.manage";
+        public const string ChargesRead = "finance.charges.read";
+        public const string ChargesCalculate = "finance.charges.calculate";
+        public const string ChargesAdjust = "finance.charges.adjust";
         public const string InvoicesRead = "finance.invoices.read";
         public const string InvoicesCreate = "finance.invoices.create";
+        public const string InvoicesIssue = "finance.invoices.issue";
+        public const string InvoicesCancel = "finance.invoices.cancel";
+        public const string PaymentsRead = "finance.payments.read";
         public const string PaymentsManage = "finance.payments.manage";
+        public const string PaymentsAllocate = "finance.payments.allocate";
+        public const string PaymentsReverse = "finance.payments.reverse";
+        public const string BalancesRead = "finance.balances.read";
+        public const string LedgerRead = "finance.ledger.read";
+        public const string BalancesReconcile = "finance.balances.reconcile";
         public const string CodManage = "finance.cod.manage";
     }
 
@@ -351,9 +362,20 @@ public static class AppPermissions
             // Finance
             ("Finance", Finance.RatesRead, "Read Rates", "Allows viewing shipping rate cards and rules"),
             ("Finance", Finance.RatesManage, "Manage Rates", "Allows configuring shipping rate cards and rules"),
-            ("Finance", Finance.InvoicesRead, "Read Invoices", "Allows viewing customer invoices and balances"),
-            ("Finance", Finance.InvoicesCreate, "Create Invoices", "Allows generating customer invoices"),
-            ("Finance", Finance.PaymentsManage, "Manage Payments", "Allows recording payments and allocations"),
+            ("Finance", Finance.ChargesRead, "Read Charges", "Allows viewing shipment charges and fee breakdowns"),
+            ("Finance", Finance.ChargesCalculate, "Calculate Charges", "Allows calculating shipping fees"),
+            ("Finance", Finance.ChargesAdjust, "Adjust Charges", "Allows recording fee adjustments on shipments"),
+            ("Finance", Finance.InvoicesRead, "Read Invoices", "Allows viewing customer invoices"),
+            ("Finance", Finance.InvoicesCreate, "Create Invoices", "Allows creating draft customer invoices"),
+            ("Finance", Finance.InvoicesIssue, "Issue Invoices", "Allows issuing and posting customer invoices"),
+            ("Finance", Finance.InvoicesCancel, "Cancel Invoices", "Allows cancelling customer invoices"),
+            ("Finance", Finance.PaymentsRead, "Read Payments", "Allows viewing received customer payments"),
+            ("Finance", Finance.PaymentsManage, "Manage Payments", "Allows recording payments"),
+            ("Finance", Finance.PaymentsAllocate, "Allocate Payments", "Allows allocating payments to invoices"),
+            ("Finance", Finance.PaymentsReverse, "Reverse Payments", "Allows reversing payment allocations"),
+            ("Finance", Finance.BalancesRead, "Read Balances", "Allows viewing customer account balances"),
+            ("Finance", Finance.LedgerRead, "Read Ledger", "Allows viewing financial ledger entries"),
+            ("Finance", Finance.BalancesReconcile, "Reconcile Balances", "Allows reconciling customer balances"),
             ("Finance", Finance.CodManage, "Manage COD", "Allows managing COD collection and remittances"),
 
             // Notification

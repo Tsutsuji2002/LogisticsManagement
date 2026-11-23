@@ -151,6 +151,8 @@ The system connects to Microsoft SQL Server reusing the production database (14 
 | Sales — Order Management | `Modules/Sales` | `Orders`, `OrderItems`, `OrderPackages`, `OrderAddresses` | `IOrderService`, `IOrderItemService`, `IOrderPackageService`, `IOrderAddressService`, `INumberSequenceService` |
 | Shipping — Shipment Management | `Modules/Shipping` | `Shipments`, `ShipmentPackages`, `ShipmentAddresses`, `PickupRequests`, `ShipmentAssignments`, `DeliveryAttempts`, `ProofOfDelivery`, `ReturnRequests`, `ShipmentRoutes` | `IShipmentService`, `IShipmentPackageService`, `IShipmentAddressService`, `IPickupRequestService`, `IShipmentAssignmentService`, `IDeliveryAttemptService`, `IProofOfDeliveryService`, `IReturnRequestService`, `IShipmentRouteService` |
 | Carrier Integration | `Modules/Carrier` & `Logistics.Server.Integrations` | `Carriers`, `CarrierServices`, `CarrierConfigurations`, `CarrierTrackingMappings`, `CarrierTrackingEvents`, `CarrierWebhookLogs`, `CarrierApiLogs`, `CarrierSyncJobs` | `ICarrierManagementService`, `ICarrierServiceManagementService`, `ICarrierConfigurationService`, `ICarrierTrackingMappingService`, `ICarrierIntegrationService`, `ICarrierWebhookService`, `ICarrierApiLogService`, `ICarrierSyncJobService`, `ICarrierTrackingSyncOrchestrator` |
+| Warehouse & Inventory | `Modules/Warehouse` | `Warehouses`, `WarehouseReceipts`, `WarehouseDispatches`, `ParcelHandling`, `Inventory` | `IWarehouseManagementService`, `IWarehouseReceiptService`, `IWarehouseDispatchService`, `IParcelHandlingService`, `IInventoryStockService`, `IStockAdjustmentService`, `IStockTransferService`, `IInventoryReservationService`, `IInventoryLotService`, `IInventorySerialService` |
+| Finance & Billing | `Modules/Finance` | `RateCards`, `ShippingFees`, `Invoices`, `Payments`, `CustomerBalances`, `FinancialLedger` | `IRateManagementService`, `IShippingFeeCalculationService`, `IShipmentChargeService`, `IInvoiceService`, `IPaymentService`, `ICustomerBalanceService`, `IFinancialLedgerService` |
 
 ### Sales Module — Architecture Notes
 
@@ -167,3 +169,16 @@ Order totals (`TotalWeightKg`, `TotalVolumeCbm`, `DeclaredValue`) are recalculat
 ### Shipping Module — Architecture Notes
 
 The Shipping module acts as the physical execution arm for Logistics. It handles atomic creation from confirmed orders (NumberSequence scope `"WAYBILL"`), snapshot addresses, package volumetric calculations, courier/vehicle assignments, driver arrival/pickup workflows, delivery attempts with failure classification, Proof of Delivery (with signature & photo file references), return handling, and leg-by-leg multi-warehouse routing. Transitions enforce an immutable state machine recorded to `shipping.ShipmentStatusHistories`.
+
+### Warehouse & Inventory Module — Architecture Notes
+
+The Warehouse & Inventory module governs physical facilities across two operational types: storage warehouses and parcel sorting hubs. It manages bin location capacities, receipt putaway workflows, dispatch staging, and high-throughput parcel handling barcode scanning (`Arrived`, `Sorted`, `Bagged`, `Loaded`). In inventory, it enforces perpetual stock transaction recording, stock reservation, stock adjustments, inter-warehouse transfers, lot expiration tracking (FEFO), and serial number tracking.
+
+### Finance & Billing Module — Architecture Notes
+
+The Finance & Billing module governs pricing structures, billing, payment processing, and general ledger journalizing. Key architectural pillars include:
+1. **Shipping Fee Calculation Engine**: A 3-tier priority resolution engine (Customer Pricing Rule -> Customer Contract -> Default System Rate Card) determining base tariffs, incremental weight brackets, surcharges, insurance, and COD handling fees.
+2. **Billing & Invoices**: Lifecycle from draft staging to formal issuance with immutable line items, automated tax calculation, and auto-numbering via `INumberSequenceService` (`INV-YYYYMM-######`).
+3. **Payments & Many-to-Many Allocations**: Supports partial payments, split allocations across invoices, unallocated customer credit, and atomic allocation reversals.
+4. **Permanent Financial Ledger**: An immutable double-entry journal tracking receivables (`ReceivableInvoice`), payments (`CustomerPayment`), and cancellations (`InvoiceCancellation`) with continuous running balance computation.
+5. **Real-time Credit Exposure & Reconciliation**: Concurrency-safe customer balance tracking with optimistic locking (`RowVersion`) and automated journal reconciliation.
