@@ -210,6 +210,14 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Inventory.ReservationsManage,
                 AppPermissions.Inventory.LotsManage,
                 AppPermissions.Inventory.SerialNumbersManage,
+                AppPermissions.Cod.CollectionsRead,
+                AppPermissions.Cod.CollectionsManage,
+                AppPermissions.Cod.CollectionsVerify,
+                AppPermissions.Cod.RemittancesRead,
+                AppPermissions.Cod.RemittancesCreate,
+                AppPermissions.Cod.RemittancesConfirm,
+                AppPermissions.Cod.ReconciliationRead,
+                AppPermissions.Cod.OperationsReadBranch,
                 AppPermissions.Notification.NotificationsRead
             },
 
@@ -247,6 +255,12 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Warehouse.ParcelHandlingRead,
                 AppPermissions.Warehouse.ParcelHandlingManage,
                 AppPermissions.Inventory.InventoryRead,
+                AppPermissions.Cod.CollectionsRead,
+                AppPermissions.Cod.CollectionsManage,
+                AppPermissions.Cod.RemittancesRead,
+                AppPermissions.Cod.RemittancesConfirm,
+                AppPermissions.Cod.ReconciliationRead,
+                AppPermissions.Cod.OperationsReadBranch,
                 AppPermissions.Notification.NotificationsRead
             },
 
@@ -274,7 +288,11 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Catalog.CategoriesRead,
                 AppPermissions.Catalog.ProductsRead,
                 AppPermissions.Catalog.UnitsRead,
-                AppPermissions.Shipping.TrackingRead
+                AppPermissions.Shipping.TrackingRead,
+                AppPermissions.Cod.CollectionsRead,
+                AppPermissions.Cod.CollectionsCreate,
+                AppPermissions.Cod.CollectionsCollect,
+                AppPermissions.Cod.OperationsReadOwn
             },
 
             [AppRoles.CustomerService] = new[]
@@ -308,6 +326,7 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Catalog.ProductsRead,
                 AppPermissions.Catalog.UnitsRead,
                 AppPermissions.Catalog.ServicesRead,
+                AppPermissions.Cod.CollectionsRead,
                 AppPermissions.Notification.NotificationsRead
             },
 
@@ -332,6 +351,16 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Finance.LedgerRead,
                 AppPermissions.Finance.BalancesReconcile,
                 AppPermissions.Finance.CodManage,
+                AppPermissions.Cod.CollectionsRead,
+                AppPermissions.Cod.CollectionsVerify,
+                AppPermissions.Cod.CollectionsManage,
+                AppPermissions.Cod.RemittancesRead,
+                AppPermissions.Cod.RemittancesCreate,
+                AppPermissions.Cod.RemittancesConfirm,
+                AppPermissions.Cod.RemittancesManage,
+                AppPermissions.Cod.ReconciliationRead,
+                AppPermissions.Cod.DiscrepanciesResolve,
+                AppPermissions.Cod.OperationsReadBranch,
                 AppPermissions.Crm.CustomersRead,
                 AppPermissions.Crm.CustomersOverviewRead,
                 AppPermissions.Crm.ContractsRead,
@@ -377,7 +406,10 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Warehouse.OperationsRead,
                 AppPermissions.Inventory.InventoryRead,
                 AppPermissions.Finance.RatesRead,
-                AppPermissions.Finance.InvoicesRead
+                AppPermissions.Finance.InvoicesRead,
+                AppPermissions.Cod.CollectionsRead,
+                AppPermissions.Cod.RemittancesRead,
+                AppPermissions.Cod.ReconciliationRead
             }
         };
 

@@ -198,6 +198,23 @@ public static class AppPermissions
         public const string CodManage = "finance.cod.manage";
     }
 
+    public static class Cod
+    {
+        public const string CollectionsRead = "cod.collections.read";
+        public const string CollectionsCreate = "cod.collections.create";
+        public const string CollectionsCollect = "cod.collections.collect";
+        public const string CollectionsVerify = "cod.collections.verify";
+        public const string CollectionsManage = "cod.collections.manage";
+        public const string RemittancesRead = "cod.remittances.read";
+        public const string RemittancesCreate = "cod.remittances.create";
+        public const string RemittancesConfirm = "cod.remittances.confirm";
+        public const string RemittancesManage = "cod.remittances.manage";
+        public const string ReconciliationRead = "cod.reconciliation.read";
+        public const string DiscrepanciesResolve = "cod.discrepancies.resolve";
+        public const string OperationsReadOwn = "cod.operations.read-own";
+        public const string OperationsReadBranch = "cod.operations.read-branch";
+    }
+
     public static class Notification
     {
         public const string NotificationsRead = "notification.notifications.read";
@@ -377,6 +394,21 @@ public static class AppPermissions
             ("Finance", Finance.LedgerRead, "Read Ledger", "Allows viewing financial ledger entries"),
             ("Finance", Finance.BalancesReconcile, "Reconcile Balances", "Allows reconciling customer balances"),
             ("Finance", Finance.CodManage, "Manage COD", "Allows managing COD collection and remittances"),
+
+            // COD
+            ("COD", Cod.CollectionsRead, "Read COD Collections", "Allows viewing COD collection records"),
+            ("COD", Cod.CollectionsCreate, "Create COD Collections", "Allows registering new COD collection records"),
+            ("COD", Cod.CollectionsCollect, "Collect COD", "Allows recording physical COD collection from recipient"),
+            ("COD", Cod.CollectionsVerify, "Verify COD Collections", "Allows cashier verification of deposited COD collections"),
+            ("COD", Cod.CollectionsManage, "Manage COD Collections", "Allows full management of COD collections"),
+            ("COD", Cod.RemittancesRead, "Read COD Remittances", "Allows viewing COD remittances"),
+            ("COD", Cod.RemittancesCreate, "Create COD Remittances", "Allows creating and drafting COD remittances"),
+            ("COD", Cod.RemittancesConfirm, "Confirm COD Remittances", "Allows approving and completing COD remittances to customers"),
+            ("COD", Cod.RemittancesManage, "Manage COD Remittances", "Allows full management of COD remittances"),
+            ("COD", Cod.ReconciliationRead, "Read COD Reconciliation", "Allows viewing COD reconciliation summaries and discrepancies"),
+            ("COD", Cod.DiscrepanciesResolve, "Resolve COD Discrepancies", "Allows resolving COD discrepancies"),
+            ("COD", Cod.OperationsReadOwn, "Read Own COD Operations", "Allows employees to view their own assigned COD collections"),
+            ("COD", Cod.OperationsReadBranch, "Read Branch COD Operations", "Allows viewing branch-level COD collections and operations"),
 
             // Notification
             ("Notification", Notification.NotificationsRead, "Read Notifications", "Allows viewing user notifications"),

@@ -110,6 +110,12 @@ public static class DependencyInjection
         services.AddScoped<Application.Modules.Finance.Services.IPaymentService, PaymentService>();
         services.AddScoped<Application.Modules.Finance.Services.ICustomerBalanceService, CustomerBalanceService>();
 
+        // COD Module Services
+        services.AddScoped<Application.Modules.Cod.Services.ICodCollectionService, CodCollectionService>();
+        services.AddScoped<Application.Modules.Cod.Services.ICodEmployeeService, CodEmployeeService>();
+        services.AddScoped<Application.Modules.Cod.Services.ICodRemittanceService, CodRemittanceService>();
+        services.AddScoped<Application.Modules.Cod.Services.ICodReconciliationService, CodReconciliationService>();
+
         return services;
     }
 }

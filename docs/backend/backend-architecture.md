@@ -153,6 +153,7 @@ The system connects to Microsoft SQL Server reusing the production database (14 
 | Carrier Integration | `Modules/Carrier` & `Logistics.Server.Integrations` | `Carriers`, `CarrierServices`, `CarrierConfigurations`, `CarrierTrackingMappings`, `CarrierTrackingEvents`, `CarrierWebhookLogs`, `CarrierApiLogs`, `CarrierSyncJobs` | `ICarrierManagementService`, `ICarrierServiceManagementService`, `ICarrierConfigurationService`, `ICarrierTrackingMappingService`, `ICarrierIntegrationService`, `ICarrierWebhookService`, `ICarrierApiLogService`, `ICarrierSyncJobService`, `ICarrierTrackingSyncOrchestrator` |
 | Warehouse & Inventory | `Modules/Warehouse` | `Warehouses`, `WarehouseReceipts`, `WarehouseDispatches`, `ParcelHandling`, `Inventory` | `IWarehouseManagementService`, `IWarehouseReceiptService`, `IWarehouseDispatchService`, `IParcelHandlingService`, `IInventoryStockService`, `IStockAdjustmentService`, `IStockTransferService`, `IInventoryReservationService`, `IInventoryLotService`, `IInventorySerialService` |
 | Finance & Billing | `Modules/Finance` | `RateCards`, `ShippingFees`, `Invoices`, `Payments`, `CustomerBalances`, `FinancialLedger` | `IRateManagementService`, `IShippingFeeCalculationService`, `IShipmentChargeService`, `IInvoiceService`, `IPaymentService`, `ICustomerBalanceService`, `IFinancialLedgerService` |
+| Cash on Delivery (COD) | `Modules/Cod` | `CodCollections`, `CodRemittances`, `CodOperations`, `CodReconciliation` | `ICodCollectionService`, `ICodEmployeeService`, `ICodRemittanceService`, `ICodReconciliationService` |
 
 ### Sales Module — Architecture Notes
 
@@ -182,3 +183,12 @@ The Finance & Billing module governs pricing structures, billing, payment proces
 3. **Payments & Many-to-Many Allocations**: Supports partial payments, split allocations across invoices, unallocated customer credit, and atomic allocation reversals.
 4. **Permanent Financial Ledger**: An immutable double-entry journal tracking receivables (`ReceivableInvoice`), payments (`CustomerPayment`), and cancellations (`InvoiceCancellation`) with continuous running balance computation.
 5. **Real-time Credit Exposure & Reconciliation**: Concurrency-safe customer balance tracking with optimistic locking (`RowVersion`) and automated journal reconciliation.
+
+### Cash on Delivery (COD) Module — Architecture Notes
+
+The COD module oversees physical cash collection from consignees upon delivery, driver custody handovers, branch vault verifications, and customer payouts (remittances).
+1. **Collection Lifecycle**: Strict status progression (`CollectedByDriver` -> `DepositedToBranch` -> `VerifiedByCashier` -> `RemittedToCustomer`).
+2. **Customer Balance Integration**: Verified collections increase `CustomerBalance.TotalCodHoldingAmount`. Remittance confirmation deducts from this holding balance without polluting the corporate revenue ledger with duplicate payment receipts.
+3. **Customer Remittance Batching**: Sequential remittance numbering via `INumberSequenceService` (`REM-YYYYMM-######`), automated proportional shipping fee netting, and transactional state rollback on remittance cancellation.
+4. **Driver Operations & Vault Reconciliation**: Continuous multi-level reconciliation (`ICodReconciliationService`) auditing driver cash in hand, branch vault pending deposits, and remittance batch item integrity.
+5. **Multi-Branch Security Isolation**: Enforces fine-grained permission checks and branch access verification (`UserBranchAccess`), ensuring drivers and cashier staff operate strictly within assigned territorial hubs.

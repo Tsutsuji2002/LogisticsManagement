@@ -157,6 +157,20 @@ The Logistics Management System implements Role-Based Access Control (RBAC) back
 | `finance.balances.reconcile` | Reconcile customer balances | ✓ | | | | | ✓ | |
 | `finance.ledger.read` | View general ledger audit journal | ✓ | | | | | ✓ | ✓ |
 | `finance.cod.manage` | Manage COD collections & remittance | ✓ | | | | | ✓ | |
+| **COD Module** | | | | | | | | |
+| `cod.collections.read` | View COD collection records & status | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `cod.collections.create` | Initiate COD collection for shipment | ✓ | | | | | ✓ | |
+| `cod.collections.collect` | Record field cash collection by driver | ✓ | | | ✓ | | ✓ | |
+| `cod.collections.verify` | Cashier verify cash and deposit in safe | ✓ | ✓ | | | | ✓ | |
+| `cod.collections.manage` | Manage deposits & failed collections | ✓ | ✓ | ✓ | | | ✓ | |
+| `cod.remittances.read` | View COD customer remittance batches | ✓ | ✓ | | | ✓ | ✓ | ✓ |
+| `cod.remittances.create` | Create draft customer remittance batch | ✓ | | | | | ✓ | |
+| `cod.remittances.confirm` | Confirm customer payout disbursement | ✓ | | | | | ✓ | |
+| `cod.remittances.manage` | Add/remove items & cancel remittance | ✓ | | | | | ✓ | |
+| `cod.reconciliation.read` | View COD reconciliation reports | ✓ | ✓ | | | | ✓ | ✓ |
+| `cod.discrepancies.resolve` | Resolve cash discrepancies & shortages | ✓ | ✓ | | | | ✓ | |
+| `cod.operations.read-own` | View own driver collections & holdings | ✓ | ✓ | ✓ | ✓ | | ✓ | |
+| `cod.operations.read-branch` | View branch driver performance & summary | ✓ | ✓ | ✓ | | | ✓ | |
 | **Notification Module** | | | | | | | | |
 | `notification.notifications.read`| View notifications | ✓ | ✓ | ✓ | | ✓ | | |
 | `notification.templates.manage`| Manage templates | ✓ | | | | | | |
