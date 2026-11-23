@@ -62,9 +62,41 @@ Desktop.ini
 *.swp
 *~
 
-## User files
+## User files & Secrets
 appsettings.Development.json
 appsettings.Local.json
+appsettings*.local.json
+appsettings*.Local.json
+appsettings.Production.json
+secrets.json
+.env
+.env.*
+*.env
+
+## Certificates, Keys & Credentials
+*.pfx
+*.p12
+*.key
+*.pem
+*.cer
+*.crt
+*.publishsettings
+*.credentials
+
+## AI Agents & Tooling
+.gemini/
+.antigravity/
+.agent/
+.agents/
+.system_generated/
+brain/
+scratch/
+
+## IDE
+.idea/
+.vscode/
+*.swp
+*~
 
 ## Logs
 logs/
