@@ -20,5 +20,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Client\Logistics.Client.Application\Logistics.Client.Application.csproj" />
+    <ProjectReference Include="..\..\src\Client\Logistics.Client.Infrastructure\Logistics.Client.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

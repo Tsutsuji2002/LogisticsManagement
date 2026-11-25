@@ -5,23 +5,20 @@ namespace Logistics.Client.Application.Interfaces;
 /// </summary>
 public interface IApiClient
 {
-    /// <summary>
-    /// Sends an HTTP GET request to the specified endpoint.
-    /// </summary>
     Task<TResponse?> GetAsync<TResponse>(string endpoint, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Sends an HTTP POST request with a payload to the specified endpoint.
-    /// </summary>
     Task<TResponse?> PostAsync<TRequest, TResponse>(string endpoint, TRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Sends an HTTP PUT request with a payload to the specified endpoint.
-    /// </summary>
+    Task<TResponse?> PostEmptyAsync<TResponse>(string endpoint, CancellationToken cancellationToken = default)
+        => PostAsync<object?, TResponse>(endpoint, null, cancellationToken);
+
     Task<TResponse?> PutAsync<TRequest, TResponse>(string endpoint, TRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Sends an HTTP DELETE request to the specified endpoint.
-    /// </summary>
+    Task<TResponse?> PatchAsync<TRequest, TResponse>(string endpoint, TRequest request, CancellationToken cancellationToken = default)
+        => PutAsync<TRequest, TResponse>(endpoint, request, cancellationToken);
+
     Task DeleteAsync(string endpoint, CancellationToken cancellationToken = default);
+
+    Task<(byte[] Bytes, string ContentType, string FileName)> GetFileAsync(string endpoint, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("File download is not implemented by this transport.");
 }
