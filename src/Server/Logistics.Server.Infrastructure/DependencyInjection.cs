@@ -116,6 +116,36 @@ public static class DependencyInjection
         services.AddScoped<Application.Modules.Cod.Services.ICodRemittanceService, CodRemittanceService>();
         services.AddScoped<Application.Modules.Cod.Services.ICodReconciliationService, CodReconciliationService>();
 
+        // Notification & Background Processing Services
+        services.AddSingleton<Application.Modules.Notification.Services.INotificationTemplateRenderer, NotificationTemplateRenderer>();
+        services.AddScoped<Application.Modules.Notification.Services.INotificationTemplateService, NotificationTemplateService>();
+        services.AddScoped<Application.Modules.Notification.Services.INotificationService, NotificationService>();
+        services.AddScoped<Application.Modules.Notification.Services.INotificationDeliveryService, NotificationDeliveryService>();
+
+        services.AddScoped<IOutboxService, OutboxService>();
+        services.AddScoped<Application.Modules.BackgroundProcessing.Services.IOutboxProcessorService, OutboxProcessorService>();
+        services.AddScoped<Application.Modules.BackgroundProcessing.Services.IBackgroundJobService, BackgroundJobService>();
+        services.AddScoped<Application.Modules.BackgroundProcessing.Services.IReportExecutionEngine, UnsupportedReportExecutionEngine>();
+        services.AddScoped<Application.Modules.BackgroundProcessing.Services.IScheduledReportService, ScheduledReportService>();
+        services.AddScoped<Application.Modules.BackgroundProcessing.Services.IScheduledMaintenanceService, ScheduledMaintenanceService>();
+
+        // Outbox Integration Event Handlers
+        services.AddScoped<IOutboxEventHandler, OrderConfirmedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderCancelledOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, ShipmentCreatedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, ShipmentStatusChangedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, DeliveryCompletedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, DeliveryFailedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, ReturnInitiatedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, CarrierBookingOutcomeOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, CarrierSyncFailedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, InventoryReceiptCompletedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, InvoiceIssuedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, PaymentConfirmedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, CodCollectedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, CodRemittedOutboxHandler>();
+        services.AddScoped<IOutboxEventHandler, CodDiscrepancyDetectedOutboxHandler>();
+
         return services;
     }
 }

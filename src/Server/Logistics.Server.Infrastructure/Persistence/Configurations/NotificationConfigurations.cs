@@ -36,7 +36,17 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         builder.Property(e => e.Channel).HasMaxLength(50).IsRequired();
         builder.Property(e => e.Priority).HasMaxLength(20).IsRequired();
         builder.Property(e => e.Status).HasMaxLength(50).IsRequired();
+        builder.Property(e => e.NotificationType).HasMaxLength(100);
         builder.Property(e => e.ReferenceType).HasMaxLength(50);
+        builder.Property(e => e.IsRead).HasDefaultValue(false);
+        builder.Property(e => e.ReadAt).HasPrecision(7);
+        builder.Property(e => e.ExpiresAt).HasPrecision(7);
+        builder.Property(e => e.EventKey).HasMaxLength(200);
+
+        builder.HasIndex(e => new { e.RecipientUserId, e.IsRead, e.CreatedAt });
+        builder.HasIndex(e => e.EventKey)
+            .IsUnique()
+            .HasFilter("[EventKey] IS NOT NULL");
 
         builder.HasOne(e => e.Template)
             .WithMany()
@@ -46,6 +56,11 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         builder.HasOne(e => e.RecipientUser)
             .WithMany()
             .HasForeignKey(e => e.RecipientUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(e => e.Branch)
+            .WithMany()
+            .HasForeignKey(e => e.BranchId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -96,6 +111,7 @@ public class ScheduledReportConfiguration : IEntityTypeConfiguration<ScheduledRe
         builder.ConfigureBaseEntity();
 
         builder.Property(e => e.ScheduleCron).HasMaxLength(100).IsRequired();
+        builder.Property(e => e.TimeZoneId).HasMaxLength(100).HasDefaultValue("UTC").IsRequired();
         builder.Property(e => e.OutputFormat).HasMaxLength(20).IsRequired();
         builder.Property(e => e.RecipientEmails).HasMaxLength(500).IsRequired();
         builder.Property(e => e.LastRunAt).HasPrecision(7);
@@ -105,6 +121,11 @@ public class ScheduledReportConfiguration : IEntityTypeConfiguration<ScheduledRe
         builder.HasOne(e => e.ReportDefinition)
             .WithMany(r => r.ScheduledReports)
             .HasForeignKey(e => e.ReportDefinitionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(e => e.Branch)
+            .WithMany()
+            .HasForeignKey(e => e.BranchId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

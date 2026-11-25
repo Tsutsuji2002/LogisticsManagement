@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Logistics.Server.Application.Common.Events;
 using Logistics.Server.Application.Common.Exceptions;
 using Logistics.Server.Application.Common.Interfaces;
 using Logistics.Server.Application.Common.Models;
@@ -55,17 +56,21 @@ public class ShipmentService : IShipmentService
     private readonly IAuditService _auditService;
     private readonly ICurrentUserService _currentUserService;
     private readonly INumberSequenceService _numberSequenceService;
+    private readonly IOutboxService? _outbox;
 
     public ShipmentService(
         ApplicationDbContext context,
         IAuditService auditService,
         ICurrentUserService currentUserService,
         INumberSequenceService numberSequenceService)
+        INumberSequenceService numberSequenceService,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _auditService = auditService;
         _currentUserService = currentUserService;
         _numberSequenceService = numberSequenceService;
+        _outbox = outbox;
     }
 
     private bool IsSuperAdmin() =>
@@ -347,6 +352,15 @@ public class ShipmentService : IShipmentService
 
         await _context.SaveChangesAsync(cancellationToken);
 
+        if (_outbox != null)
+        {
+            _outbox.Enqueue(
+                new ShipmentCreatedIntegrationEvent(shipment.Id, shipment.TrackingNumber, shipment.OrderId,
+                    shipment.CustomerId, shipment.OriginBranchId, shipment.DestinationBranchId),
+                "Shipment", shipment.Id.ToString());
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
         await _auditService.RecordAsync("Create", "shipping", "Shipments", shipment.Id.ToString(),
             null, new { shipment.TrackingNumber, shipment.OrderId, shipment.ShipmentStatus }, null, cancellationToken);
 
@@ -459,6 +473,11 @@ public class ShipmentService : IShipmentService
             Source = string.IsNullOrWhiteSpace(request.Source) ? "Internal" : request.Source,
             CreatedAt = DateTime.UtcNow
         });
+
+        _outbox?.Enqueue(
+            new ShipmentStatusChangedIntegrationEvent(shipment.Id, shipment.TrackingNumber, shipment.CustomerId,
+                shipment.OriginBranchId, shipment.DestinationBranchId, previousStatus, request.TargetStatus),
+            "Shipment", shipment.Id.ToString());
 
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -1361,12 +1380,19 @@ public class DeliveryAttemptService : IDeliveryAttemptService
     private readonly ApplicationDbContext _context;
     private readonly IAuditService _auditService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IOutboxService? _outbox;
 
     public DeliveryAttemptService(ApplicationDbContext context, IAuditService auditService, ICurrentUserService currentUserService)
+    public DeliveryAttemptService(
+        ApplicationDbContext context,
+        IAuditService auditService,
+        ICurrentUserService currentUserService,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _auditService = auditService;
         _currentUserService = currentUserService;
+        _outbox = outbox;
     }
 
     private async Task<Shipment> GetShipmentAsync(string identifier, CancellationToken ct)
@@ -1496,6 +1522,21 @@ public class DeliveryAttemptService : IDeliveryAttemptService
                 Source = "Internal",
                 CreatedAt = DateTime.UtcNow
             });
+        }
+
+        if (string.Equals(request.Status, "Delivered", StringComparison.OrdinalIgnoreCase))
+        {
+            _outbox?.Enqueue(
+                new DeliveryCompletedIntegrationEvent(shipment.Id, shipment.TrackingNumber, shipment.CustomerId,
+                    shipment.DestinationBranchId, request.AttemptedAt, null),
+                "Shipment", shipment.Id.ToString());
+        }
+        else if (string.Equals(request.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+        {
+            _outbox?.Enqueue(
+                new DeliveryFailedIntegrationEvent(shipment.Id, shipment.TrackingNumber, shipment.CustomerId,
+                    shipment.DestinationBranchId, request.FailureReasonCode ?? "Unknown"),
+                "Shipment", shipment.Id.ToString());
         }
 
         _context.DeliveryAttempts.Add(attempt);
@@ -1644,17 +1685,21 @@ public class ReturnRequestService : IReturnRequestService
     private readonly IAuditService _auditService;
     private readonly ICurrentUserService _currentUserService;
     private readonly INumberSequenceService _numberSequenceService;
+    private readonly IOutboxService? _outbox;
 
     public ReturnRequestService(
         ApplicationDbContext context,
         IAuditService auditService,
         ICurrentUserService currentUserService,
         INumberSequenceService numberSequenceService)
+        INumberSequenceService numberSequenceService,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _auditService = auditService;
         _currentUserService = currentUserService;
         _numberSequenceService = numberSequenceService;
+        _outbox = outbox;
     }
 
     private static ReturnRequestDto MapDto(ReturnRequest r) => new()
@@ -1767,6 +1812,15 @@ public class ReturnRequestService : IReturnRequestService
 
         _context.ReturnRequests.Add(rr);
         await _context.SaveChangesAsync(cancellationToken);
+
+        if (_outbox != null)
+        {
+            _outbox.Enqueue(
+                new ReturnInitiatedIntegrationEvent(rr.Id, rr.ReturnCode, shipment.Id, shipment.CustomerId,
+                    shipment.DestinationBranchId, rr.ReasonCode),
+                "ReturnRequest", rr.Id.ToString());
+            await _context.SaveChangesAsync(cancellationToken);
+        }
 
         await _auditService.RecordAsync("Create", "shipping", "ReturnRequests", rr.Id.ToString(), null, new { rr.ReturnCode, rr.ReasonCode }, null, cancellationToken);
         return MapDto(rr);

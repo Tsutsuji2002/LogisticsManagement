@@ -154,6 +154,8 @@ The system connects to Microsoft SQL Server reusing the production database (14 
 | Warehouse & Inventory | `Modules/Warehouse` | `Warehouses`, `WarehouseReceipts`, `WarehouseDispatches`, `ParcelHandling`, `Inventory` | `IWarehouseManagementService`, `IWarehouseReceiptService`, `IWarehouseDispatchService`, `IParcelHandlingService`, `IInventoryStockService`, `IStockAdjustmentService`, `IStockTransferService`, `IInventoryReservationService`, `IInventoryLotService`, `IInventorySerialService` |
 | Finance & Billing | `Modules/Finance` | `RateCards`, `ShippingFees`, `Invoices`, `Payments`, `CustomerBalances`, `FinancialLedger` | `IRateManagementService`, `IShippingFeeCalculationService`, `IShipmentChargeService`, `IInvoiceService`, `IPaymentService`, `ICustomerBalanceService`, `IFinancialLedgerService` |
 | Cash on Delivery (COD) | `Modules/Cod` | `CodCollections`, `CodRemittances`, `CodOperations`, `CodReconciliation` | `ICodCollectionService`, `ICodEmployeeService`, `ICodRemittanceService`, `ICodReconciliationService` |
+| Notification & Alerts | `Modules/Notification` | `Notifications`, `NotificationTemplates` | `INotificationService`, `INotificationTemplateService`, `INotificationTemplateRenderer`, `INotificationDeliveryService`, `IEmailProvider` |
+| Background Processing & Reports | `Modules/BackgroundProcessing` | `BackgroundJobs`, `ScheduledReports` | `IOutboxService`, `IOutboxProcessorService`, `IBackgroundJobService`, `IScheduledReportService`, `IReportExecutionEngine`, `IScheduledMaintenanceService` |
 
 ### Sales Module — Architecture Notes
 
@@ -192,3 +194,10 @@ The COD module oversees physical cash collection from consignees upon delivery, 
 3. **Customer Remittance Batching**: Sequential remittance numbering via `INumberSequenceService` (`REM-YYYYMM-######`), automated proportional shipping fee netting, and transactional state rollback on remittance cancellation.
 4. **Driver Operations & Vault Reconciliation**: Continuous multi-level reconciliation (`ICodReconciliationService`) auditing driver cash in hand, branch vault pending deposits, and remittance batch item integrity.
 5. **Multi-Branch Security Isolation**: Enforces fine-grained permission checks and branch access verification (`UserBranchAccess`), ensuring drivers and cashier staff operate strictly within assigned territorial hubs.
+
+### Notification & Background Processing Module — Architecture Notes
+
+1. **Transactional Outbox Bridge**: Domain modules stage versioned integration events (`IntegrationEventTypes`) via `IOutboxService` within the same EF Core transaction as their domain state updates, avoiding circular dependencies.
+2. **Multi-Instance Safe Claiming**: `OutboxProcessorService` and `BackgroundJobService` claim pending rows atomically on SQL Server via `WITH (UPDLOCK, READPAST, ROWLOCK)` + `UPDATE ... OUTPUT INSERTED.*`, paired with lease expiration recovery (`LockedAt`, `LockedBy`) and exponential backoff with jitter.
+3. **Notification Delivery & User Isolation**: In-app notifications persist with `IsRead`/`ReadAt` state and `EventKey` idempotency; outbound emails route through `IEmailProvider` (`SendGrid` or `SmtpClient`) outside open database transactions with failure classification and secret redaction.
+4. **Worker Host**: `Logistics.Server.Worker` runs `OutboxMessageProcessorJob`, `NotificationDeliveryWorkerJob`, `BackgroundJobQueueWorkerJob` (queued jobs, due scheduled reports, expired session/notification cleanup), and `CarrierTrackingSyncJob`.

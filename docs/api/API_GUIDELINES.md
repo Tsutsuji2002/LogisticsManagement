@@ -61,3 +61,16 @@ Unhandled exceptions are intercepted by `GlobalExceptionMiddleware`:
 - `KeyNotFoundException`: returns HTTP 404 Not Found
 - `UnauthorizedAccessException`: returns HTTP 401 Unauthorized
 - Other unexpected exceptions: logged via Serilog and return HTTP 500 Internal Server Error with sanitized error messages
+
+## 4. Module API Documentation Index
+
+- **Notification & Template API**: [`docs/notification/notification-api.md`](../notification/notification-api.md) (`/api/v1/notifications`, `/api/v1/notification-templates`)
+- **Background Processing & Scheduled Reports API**: [`docs/background-processing/background-processing-api.md`](../background-processing/background-processing-api.md) (`/api/v1/background-jobs`, `/api/v1/scheduled-reports`)
+- **COD Management API**: [`docs/cod/cod-api.md`](../cod/cod-api.md)
+- **Finance & Billing API**: [`docs/finance/finance-api.md`](../finance/finance-api.md)
+- **Warehouse & Inventory API**: [`docs/warehouse/warehouse-api.md`](../warehouse/warehouse-api.md)
+- **Carrier Integration API**: [`docs/carrier-integration/carrier-api.md`](../carrier-integration/carrier-api.md)
+- **Shipping API**: [`docs/shipping/shipment-api.md`](../shipping/shipment-api.md)
+- **Sales Order API**: [`docs/sales/order-api.md`](../sales/order-api.md)
+- **CRM Customer API**: [`docs/crm/customer-api.md`](../crm/customer-api.md)
+- **Catalog API**: [`docs/catalog/catalog-api.md`](../catalog/catalog-api.md)

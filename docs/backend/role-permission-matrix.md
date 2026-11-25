@@ -172,9 +172,21 @@ The Logistics Management System implements Role-Based Access Control (RBAC) back
 | `cod.operations.read-own` | View own driver collections & holdings | ✓ | ✓ | ✓ | ✓ | | ✓ | |
 | `cod.operations.read-branch` | View branch driver performance & summary | ✓ | ✓ | ✓ | | | ✓ | |
 | **Notification Module** | | | | | | | | |
-| `notification.notifications.read`| View notifications | ✓ | ✓ | ✓ | | ✓ | | |
-| `notification.templates.manage`| Manage templates | ✓ | | | | | | |
-| `notification.reports.manage` | Manage scheduled reports| ✓ | | | | | | |
+| `notification.notifications.read`| View notifications (legacy read) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `notification.notifications.read-own` | Read own notifications & mark read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `notification.notifications.manage` | Dispatch & view all/branch alerts | ✓ | | | | | | |
+| `notification.templates.read` | View & preview notification templates | ✓ | ✓ | | | | | |
+| `notification.templates.manage`| Create/update/toggle templates | ✓ | | | | | | |
+| `notification.reports.read` | View report definitions & schedules | ✓ | ✓ | ✓ | | | ✓ | |
+| `notification.reports.create` | Create branch scheduled reports | ✓ | ✓ | | | | | |
+| `notification.reports.update` | Edit branch scheduled reports | ✓ | ✓ | | | | | |
+| `notification.reports.manage` | Toggle & trigger scheduled reports| ✓ | | | | | | |
+| **Background Processing** | | | | | | | | |
+| `system.background-jobs.read` | View background jobs & failures | ✓ | | | | | | |
+| `system.background-jobs.retry` | Retry failed background jobs | ✓ | | | | | | |
+| `system.background-jobs.manage` | Cancel pending background jobs | ✓ | | | | | | |
+| `system.background-processing.read` | View worker & outbox health | ✓ | | | | | | |
+| `system.background-processing.manage` | Retry outbox messages & manage | ✓ | | | | | | |
 | **Audit Module** | | | | | | | | |
 | `audit.logs.read` | View audit trail | ✓ | | | | | | |
 

@@ -1,3 +1,4 @@
+using Logistics.Server.Application.Common.Events;
 using Logistics.Server.Application.Common.Exceptions;
 using Logistics.Server.Application.Common.Interfaces;
 using Logistics.Server.Application.Common.Models;
@@ -589,19 +590,22 @@ public class CarrierIntegrationServiceImpl : ICarrierIntegrationService
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _audit;
     private readonly ILogger<CarrierIntegrationServiceImpl> _logger;
+    private readonly IOutboxService? _outbox;
 
     public CarrierIntegrationServiceImpl(
         ApplicationDbContext context,
         ICarrierAdapterFactory adapterFactory,
         ICurrentUserService currentUser,
         IAuditService audit,
-        ILogger<CarrierIntegrationServiceImpl> logger)
+        ILogger<CarrierIntegrationServiceImpl> logger,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _adapterFactory = adapterFactory;
         _currentUser = currentUser;
         _audit = audit;
         _logger = logger;
+        _outbox = outbox;
     }
 
     public async Task<CarrierBookingResultDto> BookShipmentAsync(CarrierBookShipmentRequest request, CancellationToken cancellationToken = default)
@@ -662,6 +666,9 @@ public class CarrierIntegrationServiceImpl : ICarrierIntegrationService
                 shipment.ShipmentStatus = "ReadyForPickup";
             shipment.UpdatedAt = DateTime.UtcNow;
             shipment.UpdatedBy = _currentUser.Username;
+            _outbox?.Enqueue(
+                new CarrierBookingOutcomeIntegrationEvent(shipment.Id, carrier.Code, true, response.CarrierTrackingNumber, null),
+                "Shipment", shipment.Id.ToString());
             await _context.SaveChangesAsync(cancellationToken);
 
             await _audit.RecordAsync("BookWithCarrier", "shipping", "Shipments", shipment.Id.ToString(),
@@ -670,6 +677,13 @@ public class CarrierIntegrationServiceImpl : ICarrierIntegrationService
 
             _logger.LogInformation("Shipment {TrackingNumber} booked with carrier {Carrier}, tracking: {CarrierTracking}.",
                 shipment.TrackingNumber, carrier.Code, response.CarrierTrackingNumber);
+        }
+        else if (_outbox != null)
+        {
+            _outbox.Enqueue(
+                new CarrierBookingOutcomeIntegrationEvent(shipment.Id, carrier.Code, false, null, response.ErrorMessage),
+                "Shipment", shipment.Id.ToString());
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
         return new CarrierBookingResultDto

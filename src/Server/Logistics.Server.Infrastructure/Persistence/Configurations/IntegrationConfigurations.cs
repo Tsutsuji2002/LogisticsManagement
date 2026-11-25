@@ -15,8 +15,16 @@ public class BackgroundJobLogConfiguration : IEntityTypeConfiguration<Background
         builder.HasIndex(e => e.JobName);
 
         builder.Property(e => e.ExecutionId).HasMaxLength(100).IsRequired();
+        builder.HasIndex(e => e.ExecutionId).IsUnique();
+        builder.Property(e => e.JobReference).HasMaxLength(150);
         builder.Property(e => e.TriggerType).HasMaxLength(50).IsRequired();
         builder.Property(e => e.Status).HasMaxLength(50).IsRequired();
+        builder.HasIndex(e => new { e.Status, e.NextRetryAt });
+        builder.Property(e => e.AttemptCount).HasDefaultValue(1);
+        builder.Property(e => e.MaxAttempts).HasDefaultValue(3);
+        builder.Property(e => e.NextRetryAt).HasPrecision(7);
+        builder.Property(e => e.LockedAt).HasPrecision(7);
+        builder.Property(e => e.LockedBy).HasMaxLength(100);
         builder.Property(e => e.StartedAt).HasPrecision(7).HasDefaultValueSql("SYSUTCDATETIME()");
         builder.Property(e => e.CompletedAt).HasPrecision(7);
     }
@@ -37,8 +45,13 @@ public class OutboxMessageConfiguration : IEntityTypeConfiguration<OutboxMessage
         builder.Property(e => e.PayloadJson).IsRequired();
         builder.Property(e => e.Status).HasMaxLength(50).IsRequired();
         builder.HasIndex(e => e.Status);
+        builder.HasIndex(e => new { e.Status, e.NextRetryAt, e.CreatedAt });
 
         builder.Property(e => e.ProcessedAt).HasPrecision(7);
+        builder.Property(e => e.NextRetryAt).HasPrecision(7);
+        builder.Property(e => e.LockedAt).HasPrecision(7);
+        builder.Property(e => e.LockedBy).HasMaxLength(100);
+        builder.Property(e => e.CorrelationId).HasMaxLength(100);
         builder.Property(e => e.ErrorMessage).HasMaxLength(1000);
     }
 }

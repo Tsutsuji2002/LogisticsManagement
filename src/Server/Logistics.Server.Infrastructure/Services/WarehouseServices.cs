@@ -1,3 +1,4 @@
+using Logistics.Server.Application.Common.Events;
 using Logistics.Server.Application.Common.Exceptions;
 using Logistics.Server.Application.Common.Interfaces;
 using Logistics.Server.Application.Common.Models;
@@ -504,19 +505,22 @@ public class InventoryService : IInventoryService
     private readonly INumberSequenceService _numberSequence;
     private readonly IAuditService _audit;
     private readonly ILogger<InventoryService> _logger;
+    private readonly IOutboxService? _outbox;
 
     public InventoryService(
         ApplicationDbContext context,
         ICurrentUserService currentUser,
         INumberSequenceService numberSequence,
         IAuditService audit,
-        ILogger<InventoryService> logger)
+        ILogger<InventoryService> logger,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _currentUser = currentUser;
         _numberSequence = numberSequence;
         _audit = audit;
         _logger = logger;
+        _outbox = outbox;
     }
 
     private void EnsureWarehouseAccess(long branchId)
@@ -956,6 +960,10 @@ public class InventoryService : IInventoryService
         receipt.ActualArrivalDate = DateTime.UtcNow;
         receipt.UpdatedAt = DateTime.UtcNow;
         receipt.UpdatedBy = _currentUser.Username;
+
+        _outbox?.Enqueue(
+            new InventoryReceiptCompletedIntegrationEvent(receipt.Id, receipt.ReceiptNumber, receipt.WarehouseId, receipt.Warehouse.BranchId),
+            "WarehouseReceipt", receipt.Id.ToString());
 
         _context.InventoryTransactions.Add(txn);
         await _context.SaveChangesAsync(cancellationToken);

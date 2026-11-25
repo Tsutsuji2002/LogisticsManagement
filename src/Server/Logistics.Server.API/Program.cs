@@ -25,7 +25,7 @@ builder.Host.UseSerilog((context, loggerConfig) =>
 // Add services — each layer registers its own dependencies
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddIntegrations();
+builder.Services.AddIntegrations(builder.Configuration);
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -70,6 +70,9 @@ builder.Services.AddSwaggerGen(options =>
             Array.Empty<string>()
         }
     });
+
+    // Prevent schema ID collisions across modules (e.g. Organization vs Warehouse DTOs)
+    options.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
 
     // Include XML comments from API project
     var xmlFile = $"{typeof(Program).Assembly.GetName().Name}.xml";

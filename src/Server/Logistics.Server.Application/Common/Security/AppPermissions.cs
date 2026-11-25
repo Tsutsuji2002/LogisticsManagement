@@ -218,8 +218,23 @@ public static class AppPermissions
     public static class Notification
     {
         public const string NotificationsRead = "notification.notifications.read";
+        public const string NotificationsReadOwn = "notification.notifications.read-own";
+        public const string NotificationsManage = "notification.notifications.manage";
+        public const string TemplatesRead = "notification.templates.read";
         public const string TemplatesManage = "notification.templates.manage";
+        public const string ReportsRead = "notification.reports.read";
+        public const string ReportsCreate = "notification.reports.create";
+        public const string ReportsUpdate = "notification.reports.update";
         public const string ReportsManage = "notification.reports.manage";
+    }
+
+    public static class BackgroundProcessing
+    {
+        public const string JobsRead = "system.background-jobs.read";
+        public const string JobsRetry = "system.background-jobs.retry";
+        public const string JobsManage = "system.background-jobs.manage";
+        public const string OperationsRead = "system.background-processing.read";
+        public const string OperationsManage = "system.background-processing.manage";
     }
 
     public static class Audit
@@ -412,8 +427,21 @@ public static class AppPermissions
 
             // Notification
             ("Notification", Notification.NotificationsRead, "Read Notifications", "Allows viewing user notifications"),
-            ("Notification", Notification.TemplatesManage, "Manage Templates", "Allows managing notification templates"),
-            ("Notification", Notification.ReportsManage, "Manage Reports", "Allows managing report schedules"),
+            ("Notification", Notification.NotificationsReadOwn, "Read Own Notifications", "Allows reading own in-app notifications"),
+            ("Notification", Notification.NotificationsManage, "Manage Notifications", "Allows administrative creation and inspection of all notifications"),
+            ("Notification", Notification.TemplatesRead, "Read Notification Templates", "Allows viewing and previewing notification templates"),
+            ("Notification", Notification.TemplatesManage, "Manage Templates", "Allows creating, updating, and toggling notification templates"),
+            ("Notification", Notification.ReportsRead, "Read Scheduled Reports", "Allows viewing report definitions and schedules"),
+            ("Notification", Notification.ReportsCreate, "Create Scheduled Reports", "Allows creating new scheduled reports"),
+            ("Notification", Notification.ReportsUpdate, "Update Scheduled Reports", "Allows editing existing scheduled reports"),
+            ("Notification", Notification.ReportsManage, "Manage Reports", "Allows activating, triggering, and managing report schedules"),
+
+            // Background Processing & System Operations
+            ("BackgroundProcessing", BackgroundProcessing.JobsRead, "Read Background Jobs", "Allows inspecting background job logs and failed jobs"),
+            ("BackgroundProcessing", BackgroundProcessing.JobsRetry, "Retry Background Jobs", "Allows retrying failed background jobs"),
+            ("BackgroundProcessing", BackgroundProcessing.JobsManage, "Manage Background Jobs", "Allows cancelling and managing background jobs"),
+            ("BackgroundProcessing", BackgroundProcessing.OperationsRead, "Read Background Operations", "Allows viewing worker and outbox operational health"),
+            ("BackgroundProcessing", BackgroundProcessing.OperationsManage, "Manage Background Operations", "Allows running outbox recovery and administrative operations"),
 
             // Audit
             ("Audit", Audit.LogsRead, "Read Audit Logs", "Allows viewing system audit logs and activity history")

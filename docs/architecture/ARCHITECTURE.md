@@ -69,9 +69,9 @@ graph TD
 | **`Logistics.Server.Domain`** | Enterprise business rules, entities (`BaseEntity`), domain events (`IDomainEvent`), value objects (`ValueObject`), smart enums (`Enumeration`), result types (`Result<T>`), and domain exceptions. | None |
 | **`Logistics.Server.Application`** | Application business logic, commands, queries, application service interfaces (`IRepository`, `IUnitOfWork`, `ICacheService`), and validation. | `Domain` |
 | **`Logistics.Server.Infrastructure`** | Persistence implementations via EF Core `ApplicationDbContext`, SQL Server mapping, and caching abstraction implementations. | `Application`, `Domain` |
-| **`Logistics.Server.Integrations`** | Carrier integration abstractions (`ICarrierAdapter`), adapter bases for future carriers (GHN, GHTK, Viettel Post). | `Application`, `Domain` |
+| **`Logistics.Server.Integrations`** | Carrier integration adapters (`ICarrierAdapter` for GHN, GHTK, Viettel Post) and Email provider (`IEmailProvider` for SendGrid / SMTP). | `Application`, `Domain` |
 | **`Logistics.Server.API`** | ASP.NET Core Web API, controllers, Swagger/OpenAPI documentation, Serilog logging, and global exception handling middleware. | `Application`, `Infrastructure`, `Shared.Contracts` |
-| **`Logistics.Server.Worker`** | Background processing hosted service for scheduled sync, shipment status polling, and notification jobs. | `Application`, `Infrastructure` |
+| **`Logistics.Server.Worker`** | Background processing hosted service for Outbox dispatching, Notification delivery, Background job queue/reports/maintenance, and Carrier tracking sync. | `Application`, `Infrastructure`, `Integrations` |
 | **`Logistics.Shared.Contracts`** | Common API request/response contracts (`ApiResponse<T>`), pagination contracts (`PagedRequest`, `PagedResponse<T>`), and health check models. | None |
 | **`Logistics.Client.Application`** | Client use cases, presentation logic, view interfaces (`IDashboardView`), and presenters (`DashboardPresenter`) following the MVP pattern. | `Shared.Contracts` |
 | **`Logistics.Client.Infrastructure`** | HTTP communication (`ApiClient` via `HttpClientFactory`), API options, authentication token management abstractions. | `Client.Application`, `Shared.Contracts` |

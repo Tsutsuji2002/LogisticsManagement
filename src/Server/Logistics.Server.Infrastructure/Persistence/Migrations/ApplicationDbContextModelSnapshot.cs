@@ -3152,6 +3152,11 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<int>("AttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasPrecision(7)
                         .HasColumnType("datetime2(7)");
@@ -3175,7 +3180,31 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("JobReference")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTime?>("LockedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("LockedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("LogDetails")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("MaxAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(3);
+
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("PayloadJson")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("RecordsFailed")
@@ -3205,7 +3234,12 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ExecutionId")
+                        .IsUnique();
+
                     b.HasIndex("JobName");
+
+                    b.HasIndex("Status", "NextRetryAt");
 
                     b.ToTable("BackgroundJobLogs", "integration");
                 });
@@ -3228,6 +3262,10 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasPrecision(7)
@@ -3242,6 +3280,18 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("LockedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("LockedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
@@ -3264,6 +3314,8 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
                     b.HasIndex("EventType");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("Status", "NextRetryAt", "CreatedAt");
 
                     b.ToTable("OutboxMessages", "integration");
                 });
@@ -3914,6 +3966,9 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<long?>("BranchId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Channel")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -3933,6 +3988,23 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("EventKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<bool>("IsRead")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("NotificationType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("Priority")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -3940,6 +4012,10 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetime2(7)");
 
                     b.Property<string>("RecipientEmail")
                         .HasMaxLength(150)
@@ -3987,12 +4063,18 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("EventKey")
+                        .IsUnique()
+                        .HasFilter("[EventKey] IS NOT NULL");
+
                     b.HasIndex("PublicId")
                         .IsUnique();
 
-                    b.HasIndex("RecipientUserId");
-
                     b.HasIndex("TemplateId");
+
+                    b.HasIndex("RecipientUserId", "IsRead", "CreatedAt");
 
                     b.ToTable("Notifications", "notification");
                 });
@@ -4208,6 +4290,9 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<long?>("BranchId")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasPrecision(7)
@@ -4257,6 +4342,13 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasDefaultValue("UTC");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasPrecision(7)
                         .HasColumnType("datetime2(7)");
@@ -4266,6 +4358,8 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("PublicId")
                         .IsUnique();
@@ -7391,6 +7485,11 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Logistics.Server.Domain.Entities.Notification.Notification", b =>
                 {
+                    b.HasOne("Logistics.Server.Domain.Entities.Organization.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Logistics.Server.Domain.Entities.Identity.UserAccount", "RecipientUser")
                         .WithMany()
                         .HasForeignKey("RecipientUserId")
@@ -7400,6 +7499,8 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Branch");
 
                     b.Navigation("RecipientUser");
 
@@ -7419,11 +7520,18 @@ namespace Logistics.Server.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Logistics.Server.Domain.Entities.Notification.ScheduledReport", b =>
                 {
+                    b.HasOne("Logistics.Server.Domain.Entities.Organization.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Logistics.Server.Domain.Entities.Notification.ReportDefinition", "ReportDefinition")
                         .WithMany("ScheduledReports")
                         .HasForeignKey("ReportDefinitionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Branch");
 
                     b.Navigation("ReportDefinition");
                 });

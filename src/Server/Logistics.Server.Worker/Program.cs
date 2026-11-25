@@ -13,11 +13,13 @@ builder.Services.AddSerilog((context, loggerConfig) =>
 // Core Service Layers
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddIntegrations();
+builder.Services.AddIntegrations(builder.Configuration);
 
 // Hosted Background Services
 builder.Services.AddHostedService<OutboxMessageProcessorJob>();
 builder.Services.AddHostedService<CarrierTrackingSyncJob>();
+builder.Services.AddHostedService<NotificationDeliveryWorkerJob>();
+builder.Services.AddHostedService<BackgroundJobQueueWorkerJob>();
 
 var host = builder.Build();
 host.Run();

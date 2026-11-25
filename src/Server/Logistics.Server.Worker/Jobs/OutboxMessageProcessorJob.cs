@@ -1,46 +1,58 @@
-using Logistics.Server.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Logistics.Server.Application.Modules.BackgroundProcessing.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace Logistics.Server.Worker.Jobs;
 
 /// <summary>
-/// Background job that processes and dispatches pending transactional Outbox messages.
+/// Background hosted service claiming and dispatching transactional Outbox messages
+/// with multi-instance safe leasing, stale recovery, and graceful shutdown.
 /// </summary>
-public class OutboxMessageProcessorJob : BackgroundService
+public sealed class OutboxMessageProcessorJob : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<OutboxMessageProcessorJob> _logger;
+    private readonly string _workerId = $"{Environment.MachineName}-outbox-{Guid.NewGuid().ToString("N")[..8]}";
 
-    public OutboxMessageProcessorJob(IServiceProvider serviceProvider, ILogger<OutboxMessageProcessorJob> logger)
+    public OutboxMessageProcessorJob(
+        IServiceProvider serviceProvider,
+        IConfiguration configuration,
+        ILogger<OutboxMessageProcessorJob> logger)
     {
         _serviceProvider = serviceProvider;
+        _configuration = configuration;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("OutboxMessageProcessorJob started.");
+        var pollingSeconds = Math.Clamp(_configuration.GetValue("Worker:OutboxPollingSeconds", 10), 2, 300);
+        var batchSize = Math.Clamp(_configuration.GetValue("Worker:OutboxBatchSize", 50), 1, 200);
+        var leaseMinutes = Math.Clamp(_configuration.GetValue("Worker:OutboxLeaseMinutes", 5), 1, 60);
+        var cycle = 0;
+
+        _logger.LogInformation("OutboxMessageProcessorJob started (WorkerId: {WorkerId}, Poll: {Poll}s).", _workerId, pollingSeconds);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 using var scope = _serviceProvider.CreateScope();
-                var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var processor = scope.ServiceProvider.GetRequiredService<IOutboxProcessorService>();
 
-                var pendingMessages = await dbContext.OutboxMessages
-                    .Where(m => m.Status == "Pending")
-                    .OrderBy(m => m.CreatedAt)
-                    .Take(50)
-                    .ToListAsync(stoppingToken);
-
-                if (pendingMessages.Count > 0)
+                if (cycle % 6 == 0)
                 {
-                    _logger.LogInformation("Processing {Count} pending outbox messages.", pendingMessages.Count);
-                    // Dispatch logic will be invoked as domain event handlers are wired
+                    await processor.RecoverStaleInProgressAsync(TimeSpan.FromMinutes(leaseMinutes), stoppingToken);
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+                var processed = await processor.ProcessBatchAsync(_workerId, batchSize, stoppingToken);
+                if (processed > 0)
+                {
+                    _logger.LogInformation("OutboxMessageProcessorJob ({WorkerId}) processed {Count} messages.", _workerId, processed);
+                }
+
+                cycle++;
+                await Task.Delay(TimeSpan.FromSeconds(pollingSeconds), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -48,11 +60,11 @@ public class OutboxMessageProcessorJob : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred during Outbox processing cycle.");
+                _logger.LogError(ex, "Error occurred during Outbox processing cycle ({WorkerId}).", _workerId);
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
         }
 
-        _logger.LogInformation("OutboxMessageProcessorJob stopped.");
+        _logger.LogInformation("OutboxMessageProcessorJob stopped cleanly ({WorkerId}).", _workerId);
     }
 }

@@ -218,7 +218,12 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Cod.RemittancesConfirm,
                 AppPermissions.Cod.ReconciliationRead,
                 AppPermissions.Cod.OperationsReadBranch,
-                AppPermissions.Notification.NotificationsRead
+                AppPermissions.Notification.NotificationsRead,
+                AppPermissions.Notification.NotificationsReadOwn,
+                AppPermissions.Notification.TemplatesRead,
+                AppPermissions.Notification.ReportsRead,
+                AppPermissions.Notification.ReportsCreate,
+                AppPermissions.Notification.ReportsUpdate
             },
 
             [AppRoles.OperationsManager] = new[]
@@ -261,7 +266,9 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Cod.RemittancesConfirm,
                 AppPermissions.Cod.ReconciliationRead,
                 AppPermissions.Cod.OperationsReadBranch,
-                AppPermissions.Notification.NotificationsRead
+                AppPermissions.Notification.NotificationsRead,
+                AppPermissions.Notification.NotificationsReadOwn,
+                AppPermissions.Notification.ReportsRead
             },
 
             [AppRoles.WarehouseStaff] = new[]
@@ -292,7 +299,9 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Cod.CollectionsRead,
                 AppPermissions.Cod.CollectionsCreate,
                 AppPermissions.Cod.CollectionsCollect,
-                AppPermissions.Cod.OperationsReadOwn
+                AppPermissions.Cod.OperationsReadOwn,
+                AppPermissions.Notification.NotificationsRead,
+                AppPermissions.Notification.NotificationsReadOwn
             },
 
             [AppRoles.CustomerService] = new[]
@@ -327,7 +336,8 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Catalog.UnitsRead,
                 AppPermissions.Catalog.ServicesRead,
                 AppPermissions.Cod.CollectionsRead,
-                AppPermissions.Notification.NotificationsRead
+                AppPermissions.Notification.NotificationsRead,
+                AppPermissions.Notification.NotificationsReadOwn
             },
 
             [AppRoles.FinanceStaff] = new[]
@@ -375,7 +385,10 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Catalog.ProductsRead,
                 AppPermissions.Catalog.UnitsRead,
                 AppPermissions.Catalog.ServicesRead,
-                AppPermissions.Sales.OrdersRead
+                AppPermissions.Sales.OrdersRead,
+                AppPermissions.Notification.NotificationsRead,
+                AppPermissions.Notification.NotificationsReadOwn,
+                AppPermissions.Notification.ReportsRead
             },
 
             [AppRoles.ReadOnly] = new[]
@@ -409,7 +422,9 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Finance.InvoicesRead,
                 AppPermissions.Cod.CollectionsRead,
                 AppPermissions.Cod.RemittancesRead,
-                AppPermissions.Cod.ReconciliationRead
+                AppPermissions.Cod.ReconciliationRead,
+                AppPermissions.Notification.NotificationsRead,
+                AppPermissions.Notification.NotificationsReadOwn
             }
         };
 

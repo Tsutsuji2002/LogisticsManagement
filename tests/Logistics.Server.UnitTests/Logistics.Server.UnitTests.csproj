@@ -13,6 +13,7 @@
     </PackageReference>
     <PackageReference Include="Moq" />
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <PackageReference Include="coverlet.collector">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -22,5 +23,6 @@
     <ProjectReference Include="..\..\src\Server\Logistics.Server.Domain\Logistics.Server.Domain.csproj" />
     <ProjectReference Include="..\..\src\Server\Logistics.Server.Application\Logistics.Server.Application.csproj" />
     <ProjectReference Include="..\..\src\Server\Logistics.Server.Infrastructure\Logistics.Server.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Server\Logistics.Server.Integrations\Logistics.Server.Integrations.csproj" />
   </ItemGroup>
 </Project>

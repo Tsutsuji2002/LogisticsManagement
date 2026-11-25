@@ -11,5 +11,9 @@ public class OutboxMessage : BaseHistoricalEntity
     public DateTime? ProcessedAt { get; set; }
     public string Status { get; set; } = "Pending"; // Pending, InProgress, Published, Failed
     public int RetryCount { get; set; }
+    public DateTime? NextRetryAt { get; set; }
+    public DateTime? LockedAt { get; set; }
+    public string? LockedBy { get; set; }
+    public string? CorrelationId { get; set; }
     public string? ErrorMessage { get; set; }
 }

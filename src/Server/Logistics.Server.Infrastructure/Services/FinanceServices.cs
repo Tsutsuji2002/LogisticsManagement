@@ -1,3 +1,4 @@
+using Logistics.Server.Application.Common.Events;
 using Logistics.Server.Application.Common.Exceptions;
 using Logistics.Server.Application.Common.Interfaces;
 using Logistics.Server.Application.Common.Models;
@@ -962,6 +963,7 @@ public class InvoiceService : IInvoiceService
     private readonly IAuditService _audit;
     private readonly ICurrentUserService _currentUser;
     private readonly ILogger<InvoiceService> _logger;
+    private readonly IOutboxService? _outbox;
 
     public InvoiceService(
         ApplicationDbContext context,
@@ -969,7 +971,8 @@ public class InvoiceService : IInvoiceService
         IFinancialLedgerService ledger,
         IAuditService audit,
         ICurrentUserService currentUser,
-        ILogger<InvoiceService> logger)
+        ILogger<InvoiceService> logger,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _numberSequence = numberSequence;
@@ -977,6 +980,7 @@ public class InvoiceService : IInvoiceService
         _audit = audit;
         _currentUser = currentUser;
         _logger = logger;
+        _outbox = outbox;
     }
 
     public async Task<PagedResult<InvoiceDto>> GetInvoicesAsync(
@@ -1266,6 +1270,10 @@ public class InvoiceService : IInvoiceService
             balance.LastUpdatedDate = DateTime.UtcNow;
         }
 
+        _outbox?.Enqueue(
+            new InvoiceIssuedIntegrationEvent(invoice.Id, invoice.InvoiceNumber, invoice.CustomerId, invoice.Customer.BranchId, invoice.TotalAmount),
+            "Invoice", invoice.Id.ToString());
+
         await _context.SaveChangesAsync(cancellationToken);
 
         await _audit.RecordAsync("IssueInvoice", "finance", "Invoices", invoice.Id.ToString(),
@@ -1410,6 +1418,7 @@ public class PaymentService : IPaymentService
     private readonly IAuditService _audit;
     private readonly ICurrentUserService _currentUser;
     private readonly ILogger<PaymentService> _logger;
+    private readonly IOutboxService? _outbox;
 
     public PaymentService(
         ApplicationDbContext context,
@@ -1417,7 +1426,8 @@ public class PaymentService : IPaymentService
         IFinancialLedgerService ledger,
         IAuditService audit,
         ICurrentUserService currentUser,
-        ILogger<PaymentService> logger)
+        ILogger<PaymentService> logger,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _numberSequence = numberSequence;
@@ -1425,6 +1435,7 @@ public class PaymentService : IPaymentService
         _audit = audit;
         _currentUser = currentUser;
         _logger = logger;
+        _outbox = outbox;
     }
 
     public async Task<PagedResult<PaymentDto>> GetPaymentsAsync(
@@ -1555,6 +1566,14 @@ public class PaymentService : IPaymentService
         }
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        if (_outbox != null)
+        {
+            _outbox.Enqueue(
+                new PaymentConfirmedIntegrationEvent(payment.Id, payment.PaymentNumber, payment.CustomerId, customer.BranchId, payment.Amount),
+                "Payment", payment.Id.ToString());
+            await _context.SaveChangesAsync(cancellationToken);
+        }
 
         // Process Initial Allocations if requested
         if (request.InitialAllocations?.Count > 0)

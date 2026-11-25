@@ -1,3 +1,4 @@
+using Logistics.Server.Application.Common.Events;
 using Logistics.Server.Application.Common.Exceptions;
 using Logistics.Server.Application.Common.Interfaces;
 using Logistics.Server.Application.Common.Models;
@@ -21,17 +22,20 @@ public class CodCollectionService : ICodCollectionService
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _audit;
     private readonly ILogger<CodCollectionService> _logger;
+    private readonly IOutboxService? _outbox;
 
     public CodCollectionService(
         ApplicationDbContext context,
         ICurrentUserService currentUser,
         IAuditService audit,
-        ILogger<CodCollectionService> logger)
+        ILogger<CodCollectionService> logger,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _currentUser = currentUser;
         _audit = audit;
         _logger = logger;
+        _outbox = outbox;
     }
 
     public async Task<PagedResult<CodCollectionDto>> GetCollectionsAsync(
@@ -311,6 +315,11 @@ public class CodCollectionService : ICodCollectionService
             balance.LastUpdatedDate = DateTime.UtcNow;
         }
 
+        _outbox?.Enqueue(
+            new CodCollectedIntegrationEvent(collection.Id, collection.ShipmentId, collection.Shipment.TrackingNumber,
+                collection.Shipment.CustomerId, collection.Shipment.DestinationBranchId, collection.CollectedAmount),
+            "CODCollection", collection.Id.ToString());
+
         await _context.SaveChangesAsync(cancellationToken);
 
         await _audit.RecordAsync("VerifyCodCollection", "finance", "CODCollections", collection.Id.ToString(),
@@ -569,19 +578,22 @@ public class CodRemittanceService : ICodRemittanceService
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditService _audit;
     private readonly ILogger<CodRemittanceService> _logger;
+    private readonly IOutboxService? _outbox;
 
     public CodRemittanceService(
         ApplicationDbContext context,
         INumberSequenceService numberSequence,
         ICurrentUserService currentUser,
         IAuditService audit,
-        ILogger<CodRemittanceService> logger)
+        ILogger<CodRemittanceService> logger,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _numberSequence = numberSequence;
         _currentUser = currentUser;
         _audit = audit;
         _logger = logger;
+        _outbox = outbox;
     }
 
     public async Task<PagedResult<CodRemittanceDto>> GetRemittancesAsync(
@@ -873,6 +885,11 @@ public class CodRemittanceService : ICodRemittanceService
             balance.TotalCodHoldingAmount = Math.Max(0m, balance.TotalCodHoldingAmount - remittance.TotalCodAmount);
             balance.LastUpdatedDate = DateTime.UtcNow;
         }
+
+        _outbox?.Enqueue(
+            new CodRemittedIntegrationEvent(remittance.Id, remittance.RemittanceNumber, remittance.CustomerId,
+                remittance.Customer.BranchId, remittance.NetRemittanceAmount),
+            "CODRemittance", remittance.Id.ToString());
 
         await _context.SaveChangesAsync(cancellationToken);
 

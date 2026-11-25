@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Logistics.Server.Application.Common.Events;
 using Logistics.Server.Application.Common.Exceptions;
 using Logistics.Server.Application.Common.Interfaces;
 using Logistics.Server.Application.Common.Models;
@@ -20,17 +21,20 @@ public class OrderService : IOrderService
     private readonly IAuditService _auditService;
     private readonly ICurrentUserService _currentUserService;
     private readonly INumberSequenceService _numberSequenceService;
+    private readonly IOutboxService? _outbox;
 
     public OrderService(
         ApplicationDbContext context,
         IAuditService auditService,
         ICurrentUserService currentUserService,
-        INumberSequenceService numberSequenceService)
+        INumberSequenceService numberSequenceService,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _auditService = auditService;
         _currentUserService = currentUserService;
         _numberSequenceService = numberSequenceService;
+        _outbox = outbox;
     }
 
     private void EnsureBranchAccess(long branchId)
@@ -484,6 +488,14 @@ public class OrderService : IOrderService
         await _context.Orders.AddAsync(order, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
+        if (_outbox != null)
+        {
+            _outbox.Enqueue(
+                new OrderCreatedIntegrationEvent(order.Id, order.OrderNumber, order.CustomerId, order.BranchId),
+                "Order", order.Id.ToString());
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
         // 10. Audit log
         await _auditService.RecordAsync(
             "CREATE",
@@ -543,6 +555,10 @@ public class OrderService : IOrderService
         var oldStatus = order.OrderStatus;
         order.OrderStatus = "Confirmed";
 
+        _outbox?.Enqueue(
+            new OrderConfirmedIntegrationEvent(order.Id, order.OrderNumber, order.CustomerId, order.BranchId, order.CodAmount),
+            "Order", order.Id.ToString());
+
         await _context.SaveChangesAsync(cancellationToken);
 
         await _auditService.RecordAsync(
@@ -587,6 +603,10 @@ public class OrderService : IOrderService
         order.CancellationReason = request.Reason;
         order.CancelledAt = DateTime.UtcNow;
         order.CancelledBy = _currentUserService.Username ?? _currentUserService.UserId?.ToString() ?? "System";
+
+        _outbox?.Enqueue(
+            new OrderCancelledIntegrationEvent(order.Id, order.OrderNumber, order.CustomerId, order.BranchId, request.Reason),
+            "Order", order.Id.ToString());
 
         await _context.SaveChangesAsync(cancellationToken);
 
