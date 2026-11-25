@@ -64,6 +64,7 @@ Unhandled exceptions are intercepted by `GlobalExceptionMiddleware`:
 
 ## 4. Module API Documentation Index
 
+- **Reporting & Dashboard API**: [`docs/reporting/reporting-api.md`](../reporting/reporting-api.md) (`/api/v1/dashboard`, `/api/v1/reports`)
 - **Notification & Template API**: [`docs/notification/notification-api.md`](../notification/notification-api.md) (`/api/v1/notifications`, `/api/v1/notification-templates`)
 - **Background Processing & Scheduled Reports API**: [`docs/background-processing/background-processing-api.md`](../background-processing/background-processing-api.md) (`/api/v1/background-jobs`, `/api/v1/scheduled-reports`)
 - **COD Management API**: [`docs/cod/cod-api.md`](../cod/cod-api.md)

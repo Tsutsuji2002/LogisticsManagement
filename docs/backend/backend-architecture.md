@@ -156,6 +156,7 @@ The system connects to Microsoft SQL Server reusing the production database (14 
 | Cash on Delivery (COD) | `Modules/Cod` | `CodCollections`, `CodRemittances`, `CodOperations`, `CodReconciliation` | `ICodCollectionService`, `ICodEmployeeService`, `ICodRemittanceService`, `ICodReconciliationService` |
 | Notification & Alerts | `Modules/Notification` | `Notifications`, `NotificationTemplates` | `INotificationService`, `INotificationTemplateService`, `INotificationTemplateRenderer`, `INotificationDeliveryService`, `IEmailProvider` |
 | Background Processing & Reports | `Modules/BackgroundProcessing` | `BackgroundJobs`, `ScheduledReports` | `IOutboxService`, `IOutboxProcessorService`, `IBackgroundJobService`, `IScheduledReportService`, `IReportExecutionEngine`, `IScheduledMaintenanceService` |
+| Reporting & Dashboard | `Modules/Reporting` | `Dashboard`, `Reports` | `IDashboardQueryService`, `IOperationalReportService`, `IFinancialReportService`, `IReportExportService` |
 
 ### Sales Module — Architecture Notes
 

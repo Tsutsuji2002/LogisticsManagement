@@ -62,7 +62,6 @@ public class ShipmentService : IShipmentService
         ApplicationDbContext context,
         IAuditService auditService,
         ICurrentUserService currentUserService,
-        INumberSequenceService numberSequenceService)
         INumberSequenceService numberSequenceService,
         IOutboxService? outbox = null)
     {
@@ -1382,7 +1381,6 @@ public class DeliveryAttemptService : IDeliveryAttemptService
     private readonly ICurrentUserService _currentUserService;
     private readonly IOutboxService? _outbox;
 
-    public DeliveryAttemptService(ApplicationDbContext context, IAuditService auditService, ICurrentUserService currentUserService)
     public DeliveryAttemptService(
         ApplicationDbContext context,
         IAuditService auditService,
@@ -1691,7 +1689,6 @@ public class ReturnRequestService : IReturnRequestService
         ApplicationDbContext context,
         IAuditService auditService,
         ICurrentUserService currentUserService,
-        INumberSequenceService numberSequenceService)
         INumberSequenceService numberSequenceService,
         IOutboxService? outbox = null)
     {

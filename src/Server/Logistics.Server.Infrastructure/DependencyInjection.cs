@@ -8,6 +8,7 @@ using Logistics.Server.Application.Modules.Shipping.Services;
 using Logistics.Server.Infrastructure.Persistence;
 using Logistics.Server.Infrastructure.Persistence.Repositories;
 using Logistics.Server.Infrastructure.Services;
+using Logistics.Server.Infrastructure.Services.Reporting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -125,9 +126,15 @@ public static class DependencyInjection
         services.AddScoped<IOutboxService, OutboxService>();
         services.AddScoped<Application.Modules.BackgroundProcessing.Services.IOutboxProcessorService, OutboxProcessorService>();
         services.AddScoped<Application.Modules.BackgroundProcessing.Services.IBackgroundJobService, BackgroundJobService>();
-        services.AddScoped<Application.Modules.BackgroundProcessing.Services.IReportExecutionEngine, UnsupportedReportExecutionEngine>();
+        services.AddScoped<Application.Modules.BackgroundProcessing.Services.IReportExecutionEngine, ReportingExecutionEngine>();
         services.AddScoped<Application.Modules.BackgroundProcessing.Services.IScheduledReportService, ScheduledReportService>();
         services.AddScoped<Application.Modules.BackgroundProcessing.Services.IScheduledMaintenanceService, ScheduledMaintenanceService>();
+
+        // Reporting & Dashboard Services
+        services.AddScoped<Application.Modules.Reporting.Services.IDashboardQueryService, DashboardQueryService>();
+        services.AddScoped<Application.Modules.Reporting.Services.IOperationalReportService, OperationalReportService>();
+        services.AddScoped<Application.Modules.Reporting.Services.IFinancialReportService, FinancialReportService>();
+        services.AddScoped<Application.Modules.Reporting.Services.IReportExportService, ReportExportService>();
 
         // Outbox Integration Event Handlers
         services.AddScoped<IOutboxEventHandler, OrderConfirmedOutboxHandler>();

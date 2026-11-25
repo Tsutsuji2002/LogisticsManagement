@@ -237,6 +237,23 @@ public static class AppPermissions
         public const string OperationsManage = "system.background-processing.manage";
     }
 
+    public static class Reporting
+    {
+        public const string DashboardRead = "dashboard.read";
+        public const string DashboardCompanyRead = "dashboard.company.read";
+        public const string DashboardBranchRead = "dashboard.branch.read";
+        public const string OrdersRead = "reports.orders.read";
+        public const string ShipmentsRead = "reports.shipments.read";
+        public const string DeliveryRead = "reports.delivery.read";
+        public const string WarehouseRead = "reports.warehouse.read";
+        public const string InventoryRead = "reports.inventory.read";
+        public const string CarrierRead = "reports.carrier.read";
+        public const string FinanceRead = "reports.finance.read";
+        public const string CodRead = "reports.cod.read";
+        public const string Export = "reports.export";
+        public const string ScheduleManage = "reports.schedule.manage";
+    }
+
     public static class Audit
     {
         public const string LogsRead = "audit.logs.read";
@@ -442,6 +459,21 @@ public static class AppPermissions
             ("BackgroundProcessing", BackgroundProcessing.JobsManage, "Manage Background Jobs", "Allows cancelling and managing background jobs"),
             ("BackgroundProcessing", BackgroundProcessing.OperationsRead, "Read Background Operations", "Allows viewing worker and outbox operational health"),
             ("BackgroundProcessing", BackgroundProcessing.OperationsManage, "Manage Background Operations", "Allows running outbox recovery and administrative operations"),
+
+            // Reporting & Dashboard
+            ("Reporting", Reporting.DashboardRead, "Read Operational Dashboards", "Allows viewing operational dashboards scoped by user permissions"),
+            ("Reporting", Reporting.DashboardCompanyRead, "Read Company Overview Dashboard", "Allows viewing enterprise-wide company overview dashboard"),
+            ("Reporting", Reporting.DashboardBranchRead, "Read Branch Dashboard", "Allows viewing branch-level operational dashboards"),
+            ("Reporting", Reporting.OrdersRead, "Read Order Reports", "Allows viewing detailed sales order reports"),
+            ("Reporting", Reporting.ShipmentsRead, "Read Shipment Reports", "Allows viewing detailed shipment reports"),
+            ("Reporting", Reporting.DeliveryRead, "Read Delivery Performance Reports", "Allows viewing delivery success, SLA, and carrier/driver metrics"),
+            ("Reporting", Reporting.WarehouseRead, "Read Warehouse & Parcel Reports", "Allows viewing warehouse receipts, dispatches, and parcel handling reports"),
+            ("Reporting", Reporting.InventoryRead, "Read Inventory Reports", "Allows viewing inventory balances, low stock, and transactions"),
+            ("Reporting", Reporting.CarrierRead, "Read Carrier Performance Reports", "Allows viewing carrier volume, API, webhook, and sync reports"),
+            ("Reporting", Reporting.FinanceRead, "Read Financial Reports", "Allows viewing shipping charges, invoices, payments, and receivables"),
+            ("Reporting", Reporting.CodRead, "Read COD Reports", "Allows viewing COD collections, remittances, and reconciliation reports"),
+            ("Reporting", Reporting.Export, "Export Reports", "Allows exporting authorized reports to CSV"),
+            ("Reporting", Reporting.ScheduleManage, "Manage Report Schedules", "Allows creating and managing scheduled reports"),
 
             // Audit
             ("Audit", Audit.LogsRead, "Read Audit Logs", "Allows viewing system audit logs and activity history")

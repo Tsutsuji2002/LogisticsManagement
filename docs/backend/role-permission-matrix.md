@@ -187,6 +187,20 @@ The Logistics Management System implements Role-Based Access Control (RBAC) back
 | `system.background-jobs.manage` | Cancel pending background jobs | ✓ | | | | | | |
 | `system.background-processing.read` | View worker & outbox health | ✓ | | | | | | |
 | `system.background-processing.manage` | Retry outbox messages & manage | ✓ | | | | | | |
+| **Reporting & Dashboard Module** | | | | | | | | |
+| `dashboard.read` | View operational dashboard KPIs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `dashboard.company.read` | View company-wide executive overview | ✓ | | | | | | |
+| `dashboard.branch.read` | View branch-specific dashboard | ✓ | ✓ | ✓ | | | ✓ | ✓ |
+| `reports.orders.read` | View & query order reports | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| `reports.shipments.read` | View & query shipment reports | ✓ | ✓ | ✓ | | ✓ | | ✓ |
+| `reports.delivery.read` | View delivery & SLA performance | ✓ | ✓ | ✓ | | ✓ | | |
+| `reports.warehouse.read` | View warehouse & hub throughput | ✓ | ✓ | ✓ | ✓ | | | |
+| `reports.inventory.read` | View inventory & low-stock reports | ✓ | ✓ | ✓ | ✓ | | | |
+| `reports.carrier.read` | View carrier telemetry & performance | ✓ | ✓ | ✓ | | | | |
+| `reports.finance.read` | View financial & receivables reports | ✓ | | | | | ✓ | |
+| `reports.cod.read` | View COD collection & reconciliation | ✓ | ✓ | ✓ | | | ✓ | |
+| `reports.export` | Export permitted reports to CSV | ✓ | ✓ | ✓ | | | ✓ | |
+| `reports.schedule.manage` | Manage report definitions & schedules | ✓ | | | | | | |
 | **Audit Module** | | | | | | | | |
 | `audit.logs.read` | View audit trail | ✓ | | | | | | |
 

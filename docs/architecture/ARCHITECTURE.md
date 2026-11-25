@@ -96,5 +96,5 @@ To support long-term modular monolith growth without structural churn, the follo
 8. **Inventory Management**: Stock on hand, SKU tracking, reserved inventory, cycle counting.
 9. **Finance & COD Management**: Cash-on-delivery tracking, carrier reconciliation, customer billing.
 10. **Notification Management**: Email, SMS, webhooks, real-time push notifications.
-11. **Reporting & Analytics**: Operational KPIs, shipment volume, on-time delivery rates, revenue.
+11. **Reporting & Analytics**: Read-only role/branch-scoped dashboards, operational/financial/COD reports, safe CSV export, and background scheduled CSV execution (`docs/reporting/`).
 12. **Audit Logging**: Immutable audit trail of critical operational and security actions.

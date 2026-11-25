@@ -223,7 +223,17 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Notification.TemplatesRead,
                 AppPermissions.Notification.ReportsRead,
                 AppPermissions.Notification.ReportsCreate,
-                AppPermissions.Notification.ReportsUpdate
+                AppPermissions.Notification.ReportsUpdate,
+                AppPermissions.Reporting.DashboardRead,
+                AppPermissions.Reporting.DashboardBranchRead,
+                AppPermissions.Reporting.OrdersRead,
+                AppPermissions.Reporting.ShipmentsRead,
+                AppPermissions.Reporting.DeliveryRead,
+                AppPermissions.Reporting.WarehouseRead,
+                AppPermissions.Reporting.InventoryRead,
+                AppPermissions.Reporting.CarrierRead,
+                AppPermissions.Reporting.CodRead,
+                AppPermissions.Reporting.Export
             },
 
             [AppRoles.OperationsManager] = new[]
@@ -268,7 +278,17 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Cod.OperationsReadBranch,
                 AppPermissions.Notification.NotificationsRead,
                 AppPermissions.Notification.NotificationsReadOwn,
-                AppPermissions.Notification.ReportsRead
+                AppPermissions.Notification.ReportsRead,
+                AppPermissions.Reporting.DashboardRead,
+                AppPermissions.Reporting.DashboardBranchRead,
+                AppPermissions.Reporting.OrdersRead,
+                AppPermissions.Reporting.ShipmentsRead,
+                AppPermissions.Reporting.DeliveryRead,
+                AppPermissions.Reporting.WarehouseRead,
+                AppPermissions.Reporting.InventoryRead,
+                AppPermissions.Reporting.CarrierRead,
+                AppPermissions.Reporting.CodRead,
+                AppPermissions.Reporting.Export
             },
 
             [AppRoles.WarehouseStaff] = new[]
@@ -301,7 +321,10 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Cod.CollectionsCollect,
                 AppPermissions.Cod.OperationsReadOwn,
                 AppPermissions.Notification.NotificationsRead,
-                AppPermissions.Notification.NotificationsReadOwn
+                AppPermissions.Notification.NotificationsReadOwn,
+                AppPermissions.Reporting.DashboardRead,
+                AppPermissions.Reporting.WarehouseRead,
+                AppPermissions.Reporting.InventoryRead
             },
 
             [AppRoles.CustomerService] = new[]
@@ -337,7 +360,11 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Catalog.ServicesRead,
                 AppPermissions.Cod.CollectionsRead,
                 AppPermissions.Notification.NotificationsRead,
-                AppPermissions.Notification.NotificationsReadOwn
+                AppPermissions.Notification.NotificationsReadOwn,
+                AppPermissions.Reporting.DashboardRead,
+                AppPermissions.Reporting.OrdersRead,
+                AppPermissions.Reporting.ShipmentsRead,
+                AppPermissions.Reporting.DeliveryRead
             },
 
             [AppRoles.FinanceStaff] = new[]
@@ -388,7 +415,12 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Sales.OrdersRead,
                 AppPermissions.Notification.NotificationsRead,
                 AppPermissions.Notification.NotificationsReadOwn,
-                AppPermissions.Notification.ReportsRead
+                AppPermissions.Notification.ReportsRead,
+                AppPermissions.Reporting.DashboardRead,
+                AppPermissions.Reporting.DashboardBranchRead,
+                AppPermissions.Reporting.FinanceRead,
+                AppPermissions.Reporting.CodRead,
+                AppPermissions.Reporting.Export
             },
 
             [AppRoles.ReadOnly] = new[]
@@ -424,7 +456,11 @@ public class IdentityDataSeeder : IIdentityDataSeeder
                 AppPermissions.Cod.RemittancesRead,
                 AppPermissions.Cod.ReconciliationRead,
                 AppPermissions.Notification.NotificationsRead,
-                AppPermissions.Notification.NotificationsReadOwn
+                AppPermissions.Notification.NotificationsReadOwn,
+                AppPermissions.Reporting.DashboardRead,
+                AppPermissions.Reporting.DashboardBranchRead,
+                AppPermissions.Reporting.OrdersRead,
+                AppPermissions.Reporting.ShipmentsRead
             }
         };
 
