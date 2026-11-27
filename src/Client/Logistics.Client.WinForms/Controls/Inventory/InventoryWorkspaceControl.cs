@@ -76,6 +76,7 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase, IThemeAware
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        Controls.Add(_topFilterCard);
         ApplyTheme();
     }
 
@@ -104,7 +105,6 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase, IThemeAware
         _whFilterCombo.SelectedIndexChanged += async (_, _) => await RefreshActiveTabAsync();
         bar.Controls.Add(_whFilterCombo);
         _topFilterCard.Controls.Add(bar);
-        Controls.Add(_topFilterCard);
     }
 
     private void BuildBalancesTab()

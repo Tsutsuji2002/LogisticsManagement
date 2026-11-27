@@ -22,13 +22,26 @@ public sealed class AntPageHeaderControl : AntdUI.Panel, IThemeAware
         Margin = new Padding(0, 0, 0, 10);
         Padding = new Padding(16, 10, 16, 10);
 
+        var rootLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Color.Transparent
+        };
+        rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
         var titleStack = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 2,
+            Margin = new Padding(0, 0, 12, 0),
             BackColor = Color.Transparent
         };
+        titleStack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         titleStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         titleStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
@@ -36,7 +49,9 @@ public sealed class AntPageHeaderControl : AntdUI.Panel, IThemeAware
         {
             Text = title,
             Font = AppTheme.PageTitleFont,
-            AutoSize = true,
+            Dock = DockStyle.Top,
+            Height = 28,
+            AutoEllipsis = true,
             BackColor = Color.Transparent,
             Margin = new Padding(0)
         };
@@ -44,7 +59,9 @@ public sealed class AntPageHeaderControl : AntdUI.Panel, IThemeAware
         {
             Text = subtitle ?? string.Empty,
             Font = AppTheme.SmallFont,
-            AutoSize = true,
+            Dock = DockStyle.Top,
+            Height = 18,
+            AutoEllipsis = true,
             Visible = !string.IsNullOrWhiteSpace(subtitle),
             BackColor = Color.Transparent,
             Margin = new Padding(0, 2, 0, 0)
@@ -54,17 +71,18 @@ public sealed class AntPageHeaderControl : AntdUI.Panel, IThemeAware
 
         _actionsPanel = new FlowLayoutPanel
         {
-            Dock = DockStyle.Right,
+            Dock = DockStyle.Top,
             AutoSize = true,
-            MinimumSize = new Size(120, 42),
+            MinimumSize = new Size(80, 42),
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
             BackColor = Color.Transparent,
             Padding = new Padding(0, 4, 0, 0)
         };
 
-        Controls.Add(titleStack);
-        Controls.Add(_actionsPanel);
+        rootLayout.Controls.Add(titleStack, 0, 0);
+        rootLayout.Controls.Add(_actionsPanel, 1, 0);
+        Controls.Add(rootLayout);
         ApplyTheme();
     }
 

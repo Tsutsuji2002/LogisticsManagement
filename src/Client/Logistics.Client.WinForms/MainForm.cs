@@ -172,6 +172,7 @@ public partial class MainForm : AntdUI.Window, IThemeAware
             AutoCollapse = false,
             ShowSubBack = true,
             Indent = true,
+            UseMnemonic = false,
             Font = AppTheme.BodyFont
         };
         _sidebarMenu.SelectChanged += async (_, e) =>
@@ -192,32 +193,41 @@ public partial class MainForm : AntdUI.Window, IThemeAware
             Padding = new Padding(14, 10, 14, 10)
         };
 
-        var leftNavFlow = new FlowLayoutPanel
+        var headerLayout = new TableLayoutPanel
         {
-            Dock = DockStyle.Left,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
             BackColor = Color.Transparent
         };
+        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        headerLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-        _collapseBtn = AppTheme.CreateSecondaryButton("☰", 42);
+        var leftNavPanel = new System.Windows.Forms.Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            Margin = new Padding(0, 0, 12, 0)
+        };
+
+        _collapseBtn = AppTheme.CreateSecondaryButton("☰", 40);
         _collapseBtn.Height = 34;
-        _collapseBtn.MinimumSize = new Size(42, 34);
+        _collapseBtn.MinimumSize = new Size(40, 34);
+        _collapseBtn.Dock = DockStyle.Left;
         _collapseBtn.Click += (_, _) => ToggleSidebar();
 
         _breadcrumb = new AntdUI.Breadcrumb
         {
-            AutoSize = false,
-            Width = 420,
-            Height = 32,
+            Dock = DockStyle.Fill,
+            Height = 34,
             Font = AppTheme.BodyBoldFont,
             Separator = "/",
-            Margin = new Padding(8, 2, 0, 0)
+            Padding = new Padding(10, 2, 4, 0)
         };
 
-        leftNavFlow.Controls.Add(_collapseBtn);
-        leftNavFlow.Controls.Add(_breadcrumb);
+        leftNavPanel.Controls.Add(_breadcrumb);
+        leftNavPanel.Controls.Add(_collapseBtn);
 
         var rightContextFlow = new FlowLayoutPanel
         {
@@ -225,13 +235,14 @@ public partial class MainForm : AntdUI.Window, IThemeAware
             AutoSize = true,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Margin = new Padding(0)
         };
 
         _userDropdown = new AntdUI.Dropdown
         {
             Height = 34,
-            Width = 175,
+            Width = 152,
             Radius = 6,
             Type = TTypeMini.Default,
             BorderWidth = 1F,
@@ -251,18 +262,18 @@ public partial class MainForm : AntdUI.Window, IThemeAware
 
         var bellHost = new System.Windows.Forms.Panel
         {
-            Width = 96,
+            Width = 88,
             Height = 34,
             Margin = new Padding(6, 0, 0, 0),
             BackColor = Color.Transparent
         };
-        _bellBtn = AppTheme.CreateSecondaryButton("🔔 TB", 68);
+        _bellBtn = AppTheme.CreateSecondaryButton("TB", 58);
         _bellBtn.Location = new Point(0, 0);
         _bellBtn.Click += async (_, _) => await NavigateByKeyAsync("Notifications.Center");
 
         _unreadBadge = new AntdUI.Badge
         {
-            Location = new Point(66, 8),
+            Location = new Point(58, 8),
             Size = new Size(28, 18),
             State = TState.Default,
             Text = "0",
@@ -271,7 +282,7 @@ public partial class MainForm : AntdUI.Window, IThemeAware
         bellHost.Controls.Add(_bellBtn);
         bellHost.Controls.Add(_unreadBadge);
 
-        _themeToggleBtn = AppTheme.CreateSecondaryButton(AppTheme.IsDark ? "☀ Sáng" : "🌙 Tối", 94);
+        _themeToggleBtn = AppTheme.CreateSecondaryButton(AppTheme.IsDark ? "Light" : "Dark", 82);
         _themeToggleBtn.Margin = new Padding(6, 0, 0, 0);
         _themeToggleBtn.Click += (_, _) =>
         {
@@ -296,7 +307,7 @@ public partial class MainForm : AntdUI.Window, IThemeAware
 
         _branchSelect = new AntdUI.Select
         {
-            Width = 225,
+            Width = 205,
             Height = 34,
             Radius = 6,
             List = true,
@@ -312,8 +323,9 @@ public partial class MainForm : AntdUI.Window, IThemeAware
         rightContextFlow.Controls.Add(_languageSelect);
         rightContextFlow.Controls.Add(_branchSelect);
 
-        _subHeaderPanel.Controls.Add(leftNavFlow);
-        _subHeaderPanel.Controls.Add(rightContextFlow);
+        headerLayout.Controls.Add(leftNavPanel, 0, 0);
+        headerLayout.Controls.Add(rightContextFlow, 1, 0);
+        _subHeaderPanel.Controls.Add(headerLayout);
 
         _subHeaderDivider = new System.Windows.Forms.Panel
         {
@@ -734,7 +746,7 @@ public partial class MainForm : AntdUI.Window, IThemeAware
 
     private void UpdateThemeToggleText()
     {
-        _themeToggleBtn.Text = AppTheme.IsDark ? "☀ Sáng" : "🌙 Tối";
+        _themeToggleBtn.Text = AppTheme.IsDark ? "Light" : "Dark";
     }
 
     private void UpdateFooterStatus()

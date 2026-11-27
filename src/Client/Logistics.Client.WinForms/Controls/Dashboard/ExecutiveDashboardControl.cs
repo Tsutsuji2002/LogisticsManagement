@@ -75,7 +75,7 @@ public sealed class ExecutiveDashboardControl : ModuleViewBase, IThemeAware
 
         _dashboardScopeCombo = new AntdUI.Select
         {
-            Width = 230,
+            Width = 265,
             Height = 34,
             Radius = 6,
             List = true,

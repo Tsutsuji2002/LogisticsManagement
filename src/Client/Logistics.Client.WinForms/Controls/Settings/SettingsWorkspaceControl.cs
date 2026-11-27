@@ -98,7 +98,7 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
     {
         _configCard = AppTheme.CreateCardPanel(new Padding(24));
         _configCard.Dock = DockStyle.Top;
-        _configCard.Height = 360;
+        _configCard.Height = 395;
 
         var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, MaximumSize = new Size(680, 0), BackColor = Color.Transparent };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35F));

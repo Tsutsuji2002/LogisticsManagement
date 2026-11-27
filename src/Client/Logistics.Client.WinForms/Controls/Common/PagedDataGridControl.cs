@@ -43,29 +43,41 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
         Padding = new Padding(0);
         Margin = new Padding(0);
 
-        // Top Header + Primary Actions Bar
-        var headerPanel = new System.Windows.Forms.Panel
+        // Top Header + Primary Actions Bar (2-column responsive TableLayout so buttons never overlap title/subtitle)
+        var headerPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 60,
-            Padding = new Padding(16, 10, 16, 8),
-            BackColor = Color.Transparent
-        };
-
-        var titleStack = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Left,
             AutoSize = true,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(16, 10, 16, 6),
+            Margin = new Padding(0),
             BackColor = Color.Transparent
         };
+        headerPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        headerPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        headerPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var titleStack = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(0, 0, 12, 0),
+            BackColor = Color.Transparent
+        };
+        titleStack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        titleStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        titleStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         _titleLabel = new Label
         {
             Text = title,
             Font = AppTheme.SectionTitleFont,
-            AutoSize = true,
+            Dock = DockStyle.Top,
+            Height = 24,
+            AutoEllipsis = true,
             BackColor = Color.Transparent,
             Margin = new Padding(0)
         };
@@ -73,21 +85,24 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
         {
             Text = subtitle ?? string.Empty,
             Font = AppTheme.SmallFont,
-            AutoSize = true,
+            Dock = DockStyle.Top,
+            Height = 18,
+            AutoEllipsis = true,
             Visible = !string.IsNullOrWhiteSpace(subtitle),
             BackColor = Color.Transparent,
             Margin = new Padding(0, 2, 0, 0)
         };
-        titleStack.Controls.Add(_titleLabel);
-        titleStack.Controls.Add(_subtitleLabel);
+        titleStack.Controls.Add(_titleLabel, 0, 0);
+        titleStack.Controls.Add(_subtitleLabel, 0, 1);
 
         _actionsPanel = new FlowLayoutPanel
         {
-            Dock = DockStyle.Right,
+            Dock = DockStyle.Top,
             AutoSize = true,
+            MaximumSize = new Size(760, 0),
             FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
-            Padding = new Padding(0, 4, 0, 0),
+            WrapContents = true,
+            Padding = new Padding(0, 2, 0, 0),
             BackColor = Color.Transparent
         };
 
@@ -95,8 +110,8 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
         _refreshButton.Click += (_, _) => RaiseReload();
         _actionsPanel.Controls.Add(_refreshButton);
 
-        headerPanel.Controls.Add(titleStack);
-        headerPanel.Controls.Add(_actionsPanel);
+        headerPanel.Controls.Add(titleStack, 0, 0);
+        headerPanel.Controls.Add(_actionsPanel, 1, 0);
 
         // Filter & Search Toolbar
         _filterPanel = new FlowLayoutPanel
