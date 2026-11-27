@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Warehouse;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -6,10 +7,11 @@ using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Logistics.Shared.Contracts.Pagination;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Inventory;
 
-public sealed class InventoryWorkspaceControl : ModuleViewBase
+public sealed class InventoryWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly IInventoryApiClient _inventoryApi;
     private readonly IWarehouseApiClient _warehouseApi;
@@ -20,13 +22,14 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
     private readonly IBranchContextService _branchContext;
     private readonly ILogger<InventoryWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabBalances = new("Tồn kho & Định mức (Chỉ xem số liệu)") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabReceipts = new("Phiếu nhập kho & Giao dịch") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabMovements = new("Điều chỉnh, Chuyển kho & Giữ hàng") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabTracking = new("Lô hàng (Lots) & Số Serial") { BackColor = AppTheme.SurfaceBg };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabBalances = new() { Text = "Tồn kho & Định mức (Chỉ xem số liệu)" };
+    private readonly AntdUI.TabPage _tabReceipts = new() { Text = "Phiếu nhập kho & Giao dịch" };
+    private readonly AntdUI.TabPage _tabMovements = new() { Text = "Điều chỉnh, Chuyển kho & Giữ hàng" };
+    private readonly AntdUI.TabPage _tabTracking = new() { Text = "Lô hàng (Lots) & Số Serial" };
 
-    private ComboBox _whFilterCombo = null!;
+    private AntdUI.Panel _topFilterCard = null!;
+    private AntdUI.Select _whFilterCombo = null!;
     private PagedDataGridControl _balancesGrid = null!;
     private PagedDataGridControl _itemsSetupGrid = null!;
     private PagedDataGridControl _receiptsGrid = null!;
@@ -63,16 +66,17 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
         BuildTrackingTab();
 
         if (_auth.HasAnyPermission(ClientPermissions.Inventory.InventoryRead, ClientPermissions.Inventory.InventoryManage))
-            _tabs.TabPages.Add(_tabBalances);
+            _tabs.Pages.Add(_tabBalances);
         if (_auth.HasAnyPermission(ClientPermissions.Inventory.InventoryRead, ClientPermissions.Warehouse.ReceiptsManage))
-            _tabs.TabPages.Add(_tabReceipts);
+            _tabs.Pages.Add(_tabReceipts);
         if (_auth.HasAnyPermission(ClientPermissions.Inventory.InventoryRead, ClientPermissions.Inventory.AdjustmentsManage, ClientPermissions.Inventory.TransfersManage, ClientPermissions.Inventory.ReservationsManage))
-            _tabs.TabPages.Add(_tabMovements);
+            _tabs.Pages.Add(_tabMovements);
         if (_auth.HasAnyPermission(ClientPermissions.Inventory.InventoryRead, ClientPermissions.Inventory.LotsManage, ClientPermissions.Inventory.SerialNumbersManage))
-            _tabs.TabPages.Add(_tabTracking);
+            _tabs.Pages.Add(_tabTracking);
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
@@ -84,17 +88,23 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
             "Inventory.Tracking" => _tabTracking,
             _ => _tabBalances
         };
-        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
+        if (_tabs.Pages.Contains(tab)) _tabs.SelectedTab = tab;
     }
 
     private void BuildTopFilterBar()
     {
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, BackColor = AppTheme.CardBg, Padding = new Padding(12, 6, 12, 4) };
-        bar.Controls.Add(new Label { Text = "Kho vật tư:", AutoSize = true, Font = AppTheme.BodyBoldFont, Margin = new Padding(0, 7, 6, 0) });
-        _whFilterCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240, Font = AppTheme.BodyFont };
+        _topFilterCard = AppTheme.CreateCardPanel(new Padding(12, 8, 12, 8));
+        _topFilterCard.Dock = DockStyle.Top;
+        _topFilterCard.Height = 52;
+        _topFilterCard.Margin = new Padding(0, 0, 0, 8);
+
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
+        bar.Controls.Add(new Label { Text = "Kho vật tư:", AutoSize = true, Font = AppTheme.BodyBoldFont, Margin = new Padding(0, 8, 8, 0), BackColor = Color.Transparent });
+        _whFilterCombo = new AntdUI.Select { Width = 260, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont };
         _whFilterCombo.SelectedIndexChanged += async (_, _) => await RefreshActiveTabAsync();
         bar.Controls.Add(_whFilterCombo);
-        Controls.Add(bar);
+        _topFilterCard.Controls.Add(bar);
+        Controls.Add(_topFilterCard);
     }
 
     private void BuildBalancesTab()
@@ -142,10 +152,10 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
 
     private void BuildMovementsTab()
     {
-        var innerTabs = new TabControl { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
+        var innerTabs = AppTheme.CreateAntdTabs();
 
         // Adjustments
-        var adjPage = new TabPage("Điều chỉnh tồn kho (Adjustments)");
+        var adjPage = new AntdUI.TabPage { Text = "Điều chỉnh tồn kho (Adjustments)" };
         _adjustmentsGrid = new PagedDataGridControl("Phiếu điều chỉnh tồn kho", "Tạo phiếu kiểm kê / hư hỏng và phê duyệt điều chỉnh.");
         if (_auth.HasPermission(ClientPermissions.Inventory.AdjustmentsManage))
         {
@@ -160,7 +170,7 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
         adjPage.Controls.Add(_adjustmentsGrid);
 
         // Transfers
-        var trfPage = new TabPage("Chuyển kho (Stock Transfers)");
+        var trfPage = new AntdUI.TabPage { Text = "Chuyển kho (Stock Transfers)" };
         _transfersGrid = new PagedDataGridControl("Lệnh chuyển kho giữa các kho", "Tạo lệnh chuyển, xác nhận xuất chuyển kho và xác nhận nhận hàng tại kho đích.");
         if (_auth.HasPermission(ClientPermissions.Inventory.TransfersManage))
         {
@@ -178,7 +188,7 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
         trfPage.Controls.Add(_transfersGrid);
 
         // Reservations
-        var resPage = new TabPage("Giữ hàng theo đơn (Reservations)");
+        var resPage = new AntdUI.TabPage { Text = "Giữ hàng theo đơn (Reservations)" };
         _reservationsGrid = new PagedDataGridControl("Giữ hàng tồn kho cho đơn hàng", "Tạo, giải phóng hoặc tiêu thụ giữ hàng.");
         if (_auth.HasPermission(ClientPermissions.Inventory.ReservationsManage))
         {
@@ -195,7 +205,7 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
         _reservationsGrid.ReloadRequested += async (_, _) => await LoadMovementsTabAsync();
         resPage.Controls.Add(_reservationsGrid);
 
-        innerTabs.TabPages.AddRange([adjPage, trfPage, resPage]);
+        innerTabs.Pages.AddRange([adjPage, trfPage, resPage]);
         innerTabs.SelectedIndexChanged += async (_, _) => await LoadMovementsTabAsync();
         _tabMovements.Controls.Add(innerTabs);
     }
@@ -226,7 +236,21 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
         _tabTracking.Controls.Add(split);
     }
 
-    private long? SelectedWarehouseId => (_whFilterCombo.SelectedItem as ModalComboOption)?.Value is long id && id > 0 ? id : null;
+    private long? SelectedWarehouseId
+    {
+        get
+        {
+            if (_whFilterCombo.SelectedIndex >= 0 &&
+                _whFilterCombo.SelectedIndex < _whFilterCombo.Items.Count &&
+                _whFilterCombo.Items[_whFilterCombo.SelectedIndex] is SelectItem item &&
+                item.Tag is long id && id > 0)
+            {
+                return id;
+            }
+            return _whFilterCombo.SelectedValue is long valId && valId > 0 ? valId : null;
+        }
+    }
+
     private long CurrentEmployeeId => _authService.CurrentUser?.EmployeeId ?? 0L;
 
     protected override async Task RefreshDataAsync()
@@ -234,18 +258,15 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
         var list = await _warehouseApi.GetWarehousesAsync(null, _branchContext.ActiveBranchId, null, true, 1, 100);
         var prev = SelectedWarehouseId;
         _whFilterCombo.Items.Clear();
-        _whFilterCombo.Items.Add(new ModalComboOption(0L, "-- Tất cả kho --"));
+        _whFilterCombo.Items.Add(new SelectItem("-- Tất cả kho --", 0L));
         foreach (var w in list.Items)
-            _whFilterCombo.Items.Add(new ModalComboOption(w.Id, $"{w.Code} - {w.Name}"));
+            _whFilterCombo.Items.Add(new SelectItem($"{w.Code} - {w.Name}", w.Id));
 
-        _whFilterCombo.SelectedIndex = 0;
         if (prev.HasValue)
-        {
-            foreach (ModalComboOption item in _whFilterCombo.Items)
-            {
-                if (Equals(item.Value, prev.Value)) { _whFilterCombo.SelectedItem = item; break; }
-            }
-        }
+            _whFilterCombo.SelectedValue = prev.Value;
+        if (_whFilterCombo.SelectedIndex < 0)
+            _whFilterCombo.SelectedIndex = 0;
+
         await RefreshActiveTabAsync();
     }
 
@@ -345,7 +366,7 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
             new() { Key = "Vendor", Label = "Nhà cung cấp / Nguồn" },
             new() { Key = "ProductId", Label = "Sản phẩm", Kind = ModalFieldKind.ComboBox, Required = true, Options = products.Items.Select(p => new ModalComboOption(p.Id, $"{p.Sku} - {p.Name}")).ToList() },
             new() { Key = "UnitId", Label = "Đơn vị tính", Kind = ModalFieldKind.ComboBox, Required = true, Options = units.Items.Select(u => new ModalComboOption(u.Id, $"{u.Code} - {u.Name}")).ToList() },
-            new() { Key = "LocationId", Label = "Vị trí nhận", Kind = ModalFieldKind.ComboBox, Options = locs.Items.Select(l => new ModalComboOption(l.Id, $"{l.Code} ({l.ZoneCode})")).Prepend(new ModalComboOption(null, "(Mặc định)")).ToList() },
+            new() { Key = "LocationId", Label = "Vị trí nhận", Kind = ModalFieldKind.ComboBox, Options = locs.Items.Select(l => new ModalComboOption(l.Id, $"{l.Code} ({l.ZoneCode})")).Prepend(new ModalComboOption(0L, "(Mặc định)")).ToList() },
             new() { Key = "Qty", Label = "Số lượng dự kiến", Kind = ModalFieldKind.Integer, Required = true, InitialValue = 10 },
             new() { Key = "Notes", Label = "Ghi chú" }
         ],
@@ -364,7 +385,7 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
                     {
                         ProductId = Convert.ToInt64(vals["ProductId"]),
                         UnitOfMeasureId = Convert.ToInt64(vals["UnitId"]),
-                        TargetLocationId = vals["LocationId"] != null ? Convert.ToInt64(vals["LocationId"]) : null,
+                        TargetLocationId = vals["LocationId"] is long lid && lid > 0 ? lid : null,
                         ExpectedQuantity = Convert.ToInt32(vals["Qty"])
                     }
                 ]
@@ -611,5 +632,12 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
             });
         });
         if (dlg.ShowDialog(this) == DialogResult.OK) await LoadTrackingTabAsync();
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _topFilterCard.Back = AppTheme.CardBg;
+        _topFilterCard.BorderColor = AppTheme.BorderSubtle;
     }
 }

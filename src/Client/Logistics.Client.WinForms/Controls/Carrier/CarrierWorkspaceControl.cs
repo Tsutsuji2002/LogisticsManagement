@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Carrier;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -6,26 +7,30 @@ using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Logistics.Shared.Contracts.Pagination;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Carrier;
 
-public sealed class CarrierWorkspaceControl : ModuleViewBase
+public sealed class CarrierWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly ICarrierApiClient _carrierApi;
     private readonly IAuthorizationService _auth;
     private readonly ILogger<CarrierWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabCarriers = new("Hãng vận chuyển & Cấu hình") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabOps = new("Tác vụ tích hợp & Tracking") { BackColor = AppTheme.SurfaceBg, Padding = new Padding(16) };
-    private readonly TabPage _tabLogs = new("API Logs / Webhooks / Sync Jobs") { BackColor = AppTheme.SurfaceBg };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabCarriers = new() { Text = "Hãng vận chuyển & Cấu hình" };
+    private readonly AntdUI.TabPage _tabOps = new() { Text = "Tác vụ tích hợp & Tracking", Padding = new Padding(14) };
+    private readonly AntdUI.TabPage _tabLogs = new() { Text = "API Logs / Webhooks / Sync Jobs" };
 
     private PagedDataGridControl _carriersGrid = null!;
-    private readonly DataGridView _servicesGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _configsGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _mappingsGrid = new() { Dock = DockStyle.Fill };
+    private AntdUI.Panel _subTabsCard = null!;
+    private readonly AntdUI.Table _servicesGrid = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _configsGrid = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _mappingsGrid = AppTheme.CreateAntdTable();
+    private AntdUI.Panel _opsCard = null!;
+    private Label _opsResultLabel = null!;
     private PagedDataGridControl _logsGrid = null!;
-    private ComboBox _logTypeCombo = null!;
+    private AntdUI.Select _logTypeCombo = null!;
 
     public CarrierWorkspaceControl(ICarrierApiClient carrierApi, IAuthorizationService auth, ILogger<CarrierWorkspaceControl> logger)
     {
@@ -39,16 +44,17 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase
 
         if (_auth.HasAnyPermission(ClientPermissions.Carrier.CarriersRead, ClientPermissions.Carrier.CarriersManage))
         {
-            _tabs.TabPages.AddRange([_tabCarriers, _tabOps, _tabLogs]);
+            _tabs.Pages.AddRange([_tabCarriers, _tabOps, _tabLogs]);
         }
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
     {
         var tab = navKey == "Carrier.Operations" ? _tabOps : _tabCarriers;
-        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
+        if (_tabs.Pages.Contains(tab)) _tabs.SelectedTab = tab;
     }
 
     private void BuildCarriersTab()
@@ -80,25 +86,36 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase
         _carriersGrid.SelectionChanged += async (_, _) => await LoadCarrierDetailsAsync();
         split.Panel1.Controls.Add(_carriersGrid);
 
-        var subTabs = new TabControl { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-        AppTheme.StyleDataGrid(_servicesGrid);
-        AppTheme.StyleDataGrid(_configsGrid);
-        AppTheme.StyleDataGrid(_mappingsGrid);
-        subTabs.TabPages.Add(new TabPage("Dịch vụ hãng") { Controls = { _servicesGrid } });
-        subTabs.TabPages.Add(new TabPage("Cấu hình (Secrets masked)") { Controls = { _configsGrid } });
-        subTabs.TabPages.Add(new TabPage("Mapping trạng thái") { Controls = { _mappingsGrid } });
-        split.Panel2.Padding = new Padding(12, 4, 12, 12);
-        split.Panel2.Controls.Add(subTabs);
+        var subTabs = AppTheme.CreateAntdTabs();
+        subTabs.Pages.Add(new AntdUI.TabPage { Text = "Dịch vụ hãng", Controls = { _servicesGrid } });
+        subTabs.Pages.Add(new AntdUI.TabPage { Text = "Cấu hình (Secrets masked)", Controls = { _configsGrid } });
+        subTabs.Pages.Add(new AntdUI.TabPage { Text = "Mapping trạng thái", Controls = { _mappingsGrid } });
+
+        _subTabsCard = AppTheme.CreateCardPanel(new Padding(10));
+        _subTabsCard.Dock = DockStyle.Fill;
+        _subTabsCard.Controls.Add(subTabs);
+
+        split.Panel2.Padding = new Padding(0, 8, 0, 0);
+        split.Panel2.Controls.Add(_subTabsCard);
         _tabCarriers.Controls.Add(split);
     }
 
     private void BuildOperationsTab()
     {
-        var card = new Panel { Dock = DockStyle.Top, Height = 280, BackColor = AppTheme.CardBg, Padding = new Padding(20) };
-        var resultLabel = new Label { Dock = DockStyle.Fill, Font = AppTheme.BodyFont, Text = "Chọn nghiệp vụ bên dưới để gọi trực tiếp API tích hợp hãng vận chuyển." };
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46 };
+        _opsCard = AppTheme.CreateCardPanel(new Padding(20));
+        _opsCard.Dock = DockStyle.Top;
+        _opsCard.Height = 290;
+
+        _opsResultLabel = new Label
+        {
+            Dock = DockStyle.Fill,
+            Font = AppTheme.BodyFont,
+            BackColor = Color.Transparent,
+            Text = "Chọn nghiệp vụ bên dưới để gọi trực tiếp API tích hợp hãng vận chuyển."
+        };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, BackColor = Color.Transparent };
         var rateBtn = AppTheme.CreatePrimaryButton("Tra cứu giá cước 3PL", 165);
-        rateBtn.Click += async (_, _) =>
+        rateBtn.Click += (_, _) =>
         {
             var dlg = new ModalFormDialog("Tra cứu giá cước hãng", [
                 new ModalFieldSpec { Key = "CarrierId", Label = "Carrier ID", Kind = ModalFieldKind.Integer, Required = true, InitialValue = 1 },
@@ -107,12 +124,12 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase
             ], async v =>
             {
                 var res = await _carrierApi.QueryRatesAsync(new CarrierRateQueryRequest { CarrierId = Convert.ToInt64(v["CarrierId"]), WeightKg = Convert.ToDecimal(v["WeightKg"]), CodAmount = Convert.ToDecimal(v["CodAmount"]) });
-                resultLabel.Text = res.Success ? string.Join("\n", res.Options.Select(o => $"{o.ServiceCode} ({o.ServiceName}): {o.TotalFee:N0} ({o.EstimatedDays} ngày)")) : $"Lỗi: {res.ErrorMessage}";
+                _opsResultLabel.Text = res.Success ? string.Join("\n", res.Options.Select(o => $"{o.ServiceCode} ({o.ServiceName}): {o.TotalFee:N0} ({o.EstimatedDays} ngày)")) : $"Lỗi: {res.ErrorMessage}";
             });
             dlg.ShowDialog(this);
         };
         var trkBtn = AppTheme.CreateSecondaryButton("Tra cứu Tracking 3PL", 165);
-        trkBtn.Click += async (_, _) =>
+        trkBtn.Click += (_, _) =>
         {
             var dlg = new ModalFormDialog("Tra cứu hành trình hãng", [
                 new ModalFieldSpec { Key = "CarrierCode", Label = "Mã hãng (GHN/GHTK...)", Required = true },
@@ -120,21 +137,33 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase
             ], async v =>
             {
                 var res = await _carrierApi.QueryTrackingAsync(v["CarrierCode"]!.ToString()!, v["TrackingNumber"]!.ToString()!);
-                resultLabel.Text = $"Hãng {res.CarrierCode} | VĐ {res.TrackingNumber} | Hiện tại: {res.CurrentStatus}\nSự kiện: {res.Events.Count}";
+                _opsResultLabel.Text = $"Hãng {res.CarrierCode} | VĐ {res.TrackingNumber} | Hiện tại: {res.CurrentStatus}\nSự kiện: {res.Events.Count}";
             });
             dlg.ShowDialog(this);
         };
         bar.Controls.AddRange([rateBtn, trkBtn]);
-        card.Controls.Add(resultLabel);
-        card.Controls.Add(bar);
-        _tabOps.Controls.Add(card);
+        _opsCard.Controls.Add(_opsResultLabel);
+        _opsCard.Controls.Add(bar);
+        _tabOps.Controls.Add(_opsCard);
     }
 
     private void BuildLogsTab()
     {
         _logsGrid = new PagedDataGridControl("Giám sát kết nối 3PL", "Xem API Logs, Webhook Logs và Sync Jobs từ Backend.");
-        _logTypeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 170, Margin = new Padding(0, 4, 8, 0) };
-        _logTypeCombo.Items.AddRange(["API Logs", "Webhook Logs", "Sync Jobs"]);
+        _logTypeCombo = new AntdUI.Select
+        {
+            Width = 175,
+            Height = 32,
+            Radius = 6,
+            List = true,
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 0, 8, 4)
+        };
+        _logTypeCombo.Items.AddRange([
+            new SelectItem("API Logs", "API Logs"),
+            new SelectItem("Webhook Logs", "Webhook Logs"),
+            new SelectItem("Sync Jobs", "Sync Jobs")
+        ]);
         _logTypeCombo.SelectedIndex = 0;
         _logTypeCombo.SelectedIndexChanged += (_, _) => _logsGrid.ResetAndReload();
         _logsGrid.AddFilterControl(_logTypeCombo);
@@ -165,10 +194,10 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase
         await UiAsyncRunner.RunSafeAsync(this, async () =>
         {
             var d = await _carrierApi.GetCarrierDetailAsync(c.Code);
-            _servicesGrid.DataSource = d.Services.ToList();
-            _mappingsGrid.DataSource = d.TrackingMappings.ToList();
+            AppTheme.BindAntdTable(_servicesGrid, d.Services);
+            AppTheme.BindAntdTable(_mappingsGrid, d.TrackingMappings);
             if (_auth.HasPermission(ClientPermissions.Carrier.CarriersManage))
-                _configsGrid.DataSource = (await _carrierApi.GetConfigurationsAsync(c.Code)).ToList();
+                AppTheme.BindAntdTable(_configsGrid, (await _carrierApi.GetConfigurationsAsync(c.Code)).ToList());
         }, logger: _logger, showMessageBoxOnError: false);
     }
 
@@ -203,7 +232,7 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase
         await UiAsyncRunner.RunSafeAsync(this, async () =>
         {
             _logsGrid.SetLoading(true);
-            var mode = _logTypeCombo.SelectedItem?.ToString();
+            var mode = _logTypeCombo.SelectedValue?.ToString();
             if (mode == "Webhook Logs")
                 _logsGrid.BindPagedData(await _carrierApi.GetWebhookLogsAsync(null, null, _logsGrid.CurrentPage, _logsGrid.CurrentPageSize));
             else if (mode == "Sync Jobs")
@@ -212,5 +241,15 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase
                 _logsGrid.BindPagedData(await _carrierApi.GetApiLogsAsync(null, null, _logsGrid.CurrentPage, _logsGrid.CurrentPageSize));
         }, logger: _logger, showMessageBoxOnError: false);
         _logsGrid.SetLoading(false);
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _subTabsCard.Back = AppTheme.CardBg;
+        _subTabsCard.BorderColor = AppTheme.BorderSubtle;
+        _opsCard.Back = AppTheme.CardBg;
+        _opsCard.BorderColor = AppTheme.BorderSubtle;
+        _opsResultLabel.ForeColor = AppTheme.TextPrimary;
     }
 }

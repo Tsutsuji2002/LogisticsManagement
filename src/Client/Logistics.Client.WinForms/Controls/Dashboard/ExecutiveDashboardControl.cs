@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Reporting;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -5,21 +6,23 @@ using Logistics.Client.WinForms.Controls.Common;
 using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Dashboard;
 
-public sealed class ExecutiveDashboardControl : ModuleViewBase
+public sealed class ExecutiveDashboardControl : ModuleViewBase, IThemeAware
 {
     private readonly IReportingApiClient _reportingClient;
     private readonly IAuthorizationService _auth;
     private readonly IBranchContextService _branchContext;
     private readonly ILogger<ExecutiveDashboardControl> _logger;
 
-    private readonly DateTimePicker _fromPicker;
-    private readonly DateTimePicker _toPicker;
-    private readonly CheckBox _useDateFilter;
-    private readonly ComboBox _dashboardScopeCombo;
-    private readonly Button _refreshBtn;
+    private readonly AntdUI.Panel _topBar;
+    private readonly AntdUI.DatePicker _fromPicker;
+    private readonly AntdUI.DatePicker _toPicker;
+    private readonly AntdUI.Checkbox _useDateFilter;
+    private readonly AntdUI.Select _dashboardScopeCombo;
+    private readonly AntdUI.Button _refreshBtn;
     private readonly Label _scopeInfoLabel;
     private readonly FlowLayoutPanel _kpiFlow;
     private readonly TableLayoutPanel _chartsGrid;
@@ -33,7 +36,16 @@ public sealed class ExecutiveDashboardControl : ModuleViewBase
 
     private readonly SimpleBarChartControl _leftChart = new("Phân bổ vận đơn / đơn hàng");
     private readonly SimpleBarChartControl _rightChart = new("Hiệu suất & Hoạt động chi nhánh / kho");
-    private readonly Label _notesLabel = new() { AutoSize = true, ForeColor = AppTheme.TextMuted, Font = AppTheme.SmallFont, Margin = new Padding(4, 6, 4, 6) };
+    private readonly AntdUI.Alert _notesLabel = new()
+    {
+        Dock = DockStyle.Top,
+        Height = 40,
+        Radius = 6,
+        Icon = TType.Info,
+        Font = AppTheme.SmallFont,
+        Margin = new Padding(0, 4, 0, 6),
+        Text = "Dữ liệu tổng hợp trực tiếp từ Backend Reporting API."
+    };
 
     public ExecutiveDashboardControl(
         IReportingApiClient reportingClient,
@@ -46,27 +58,67 @@ public sealed class ExecutiveDashboardControl : ModuleViewBase
         _branchContext = branchContext;
         _logger = logger;
 
-        Padding = new Padding(16);
+        Padding = new Padding(10);
 
-        var topBar = new FlowLayoutPanel
+        _topBar = AppTheme.CreateCardPanel(new Padding(14, 10, 14, 10));
+        _topBar.Dock = DockStyle.Top;
+        _topBar.Height = 60;
+        _topBar.Margin = new Padding(0, 0, 0, 12);
+
+        var filterFlow = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            BackColor = AppTheme.CardBg,
-            Padding = new Padding(14, 10, 14, 10),
-            Margin = new Padding(0, 0, 0, 12)
+            Dock = DockStyle.Fill,
+            AutoSize = false,
+            WrapContents = true,
+            BackColor = Color.Transparent
         };
 
-        _dashboardScopeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210, Font = AppTheme.BodyFont, Margin = new Padding(0, 4, 12, 0) };
-        PopulateScopes();
-
-        _useDateFilter = new CheckBox { Text = "Lọc theo ngày:", AutoSize = true, Checked = false, Margin = new Padding(0, 8, 6, 0) };
-        _fromPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 120, Value = DateTime.Today.AddDays(-30), Enabled = false, Margin = new Padding(0, 4, 6, 0) };
-        _toPicker = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 120, Value = DateTime.Today, Enabled = false, Margin = new Padding(0, 4, 10, 0) };
-        _useDateFilter.CheckedChanged += (_, _) =>
+        _dashboardScopeCombo = new AntdUI.Select
         {
-            _fromPicker.Enabled = _useDateFilter.Checked;
-            _toPicker.Enabled = _useDateFilter.Checked;
+            Width = 230,
+            Height = 34,
+            Radius = 6,
+            List = true,
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 2, 12, 0)
+        };
+        PopulateScopes();
+        _dashboardScopeCombo.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
+
+        _useDateFilter = new AntdUI.Checkbox
+        {
+            Text = "Lọc theo ngày:",
+            AutoSize = true,
+            Checked = false,
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 6, 8, 0)
+        };
+        _fromPicker = new AntdUI.DatePicker
+        {
+            Format = "dd/MM/yyyy",
+            Width = 136,
+            Height = 34,
+            Radius = 6,
+            Value = DateTime.Today.AddDays(-30),
+            Enabled = false,
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 2, 6, 0)
+        };
+        _toPicker = new AntdUI.DatePicker
+        {
+            Format = "dd/MM/yyyy",
+            Width = 136,
+            Height = 34,
+            Radius = 6,
+            Value = DateTime.Today,
+            Enabled = false,
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 2, 12, 0)
+        };
+        _useDateFilter.CheckedChanged += (_, e) =>
+        {
+            _fromPicker.Enabled = e.Value;
+            _toPicker.Enabled = e.Value;
         };
 
         _refreshBtn = AppTheme.CreatePrimaryButton("Làm mới KPI", 120);
@@ -77,10 +129,12 @@ public sealed class ExecutiveDashboardControl : ModuleViewBase
             AutoSize = true,
             Font = AppTheme.SmallFont,
             ForeColor = AppTheme.TextMuted,
+            BackColor = Color.Transparent,
             Padding = new Padding(8, 10, 0, 0)
         };
 
-        topBar.Controls.AddRange([_dashboardScopeCombo, _useDateFilter, _fromPicker, _toPicker, _refreshBtn, _scopeInfoLabel]);
+        filterFlow.Controls.AddRange([_dashboardScopeCombo, _useDateFilter, _fromPicker, _toPicker, _refreshBtn, _scopeInfoLabel]);
+        _topBar.Controls.Add(filterFlow);
 
         _kpiFlow = new FlowLayoutPanel
         {
@@ -112,55 +166,60 @@ public sealed class ExecutiveDashboardControl : ModuleViewBase
         Controls.Add(_chartsGrid);
         Controls.Add(_notesLabel);
         Controls.Add(_kpiFlow);
-        Controls.Add(topBar);
+        Controls.Add(_topBar);
+        ApplyTheme();
     }
 
     private void PopulateScopes()
     {
         _dashboardScopeCombo.Items.Clear();
         if (_auth.HasPermission(ClientPermissions.Reporting.DashboardCompanyRead))
-            _dashboardScopeCombo.Items.Add(new ModalComboOption("Company", "Tổng quan toàn công ty"));
+            _dashboardScopeCombo.Items.Add(new SelectItem("Tổng quan toàn công ty", "Company"));
         if (_auth.HasPermission(ClientPermissions.Reporting.DashboardBranchRead) && _branchContext.ActiveBranchId.HasValue)
-            _dashboardScopeCombo.Items.Add(new ModalComboOption("Branch", $"Chi nhánh: {_branchContext.ActiveBranch?.Name ?? _branchContext.ActiveBranchId.ToString()}"));
+            _dashboardScopeCombo.Items.Add(new SelectItem($"Chi nhánh: {_branchContext.ActiveBranch?.Name ?? _branchContext.ActiveBranchId.ToString()}", "Branch"));
         if (_auth.HasPermission(ClientPermissions.Reporting.DashboardRead))
-            _dashboardScopeCombo.Items.Add(new ModalComboOption("Operations", "Điều hành vận hành (Operations)"));
+            _dashboardScopeCombo.Items.Add(new SelectItem("Điều hành vận hành (Operations)", "Operations"));
         if (_auth.HasPermission(ClientPermissions.Reporting.DeliveryRead))
-            _dashboardScopeCombo.Items.Add(new ModalComboOption("Delivery", "Hiệu suất giao nhận & SLA"));
+            _dashboardScopeCombo.Items.Add(new SelectItem("Hiệu suất giao nhận & SLA", "Delivery"));
         if (_auth.HasPermission(ClientPermissions.Reporting.FinanceRead))
-            _dashboardScopeCombo.Items.Add(new ModalComboOption("Finance", "Tài chính & Hóa đơn"));
+            _dashboardScopeCombo.Items.Add(new SelectItem("Tài chính & Hóa đơn", "Finance"));
         if (_auth.HasPermission(ClientPermissions.Reporting.CodRead))
-            _dashboardScopeCombo.Items.Add(new ModalComboOption("COD", "Thu hộ COD & Đối soát"));
+            _dashboardScopeCombo.Items.Add(new SelectItem("Thu hộ COD & Đối soát", "COD"));
         if (_auth.HasPermission(ClientPermissions.Reporting.WarehouseRead))
-            _dashboardScopeCombo.Items.Add(new ModalComboOption("Warehouse", "Kho & Phân loại bưu kiện"));
+            _dashboardScopeCombo.Items.Add(new SelectItem("Kho & Phân loại bưu kiện", "Warehouse"));
         if (_auth.HasPermission(ClientPermissions.Reporting.InventoryRead))
-            _dashboardScopeCombo.Items.Add(new ModalComboOption("Inventory", "Tồn kho vật tư / SKU"));
+            _dashboardScopeCombo.Items.Add(new SelectItem("Tồn kho vật tư / SKU", "Inventory"));
 
         if (_dashboardScopeCombo.Items.Count > 0)
             _dashboardScopeCombo.SelectedIndex = 0;
     }
 
+    private string? GetSelectedScopeKey()
+    {
+        if (_dashboardScopeCombo.SelectedIndex >= 0 &&
+            _dashboardScopeCombo.SelectedIndex < _dashboardScopeCombo.Items.Count &&
+            _dashboardScopeCombo.Items[_dashboardScopeCombo.SelectedIndex] is SelectItem item)
+        {
+            return item.Tag?.ToString();
+        }
+        return _dashboardScopeCombo.SelectedValue?.ToString();
+    }
+
     protected override async Task RefreshDataAsync()
     {
-        var previous = (_dashboardScopeCombo.SelectedItem as ModalComboOption)?.Value?.ToString();
+        var previous = GetSelectedScopeKey();
         PopulateScopes();
         if (previous != null)
-        {
-            foreach (ModalComboOption item in _dashboardScopeCombo.Items)
-            {
-                if (string.Equals(item.Value?.ToString(), previous, StringComparison.OrdinalIgnoreCase))
-                {
-                    _dashboardScopeCombo.SelectedItem = item;
-                    break;
-                }
-            }
-        }
+            _dashboardScopeCombo.SelectedValue = previous;
 
-        var selectedMode = (_dashboardScopeCombo.SelectedItem as ModalComboOption)?.Value?.ToString() ?? "Operations";
+        var selectedMode = GetSelectedScopeKey() ?? "Operations";
+        var fromDate = (_fromPicker.Value ?? DateTime.Today.AddDays(-30)).Date;
+        var toDate = (_toPicker.Value ?? DateTime.Today).Date;
         var filter = new ReportFilterRequest
         {
             BranchId = _branchContext.ActiveBranchId,
-            StartDate = _useDateFilter.Checked ? DateOnly.FromDateTime(_fromPicker.Value.Date) : null,
-            EndDate = _useDateFilter.Checked ? DateOnly.FromDateTime(_toPicker.Value.Date) : null,
+            StartDate = _useDateFilter.Checked ? DateOnly.FromDateTime(fromDate) : null,
+            EndDate = _useDateFilter.Checked ? DateOnly.FromDateTime(toDate) : null,
             TimeZoneId = "SE Asia Standard Time"
         };
 
@@ -343,5 +402,22 @@ public sealed class ExecutiveDashboardControl : ModuleViewBase
                 ]);
             }
         }, _refreshBtn, logger: _logger);
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _topBar.Back = AppTheme.CardBg;
+        _topBar.BorderColor = AppTheme.BorderSubtle;
+        _scopeInfoLabel.ForeColor = AppTheme.TextMuted;
+        _useDateFilter.ForeColor = AppTheme.TextPrimary;
+        _cardOrders.ApplyTheme();
+        _cardShipments.ApplyTheme();
+        _cardInventory.ApplyTheme();
+        _cardFinance.ApplyTheme();
+        _cardCod.ApplyTheme();
+        _cardWarehouses.ApplyTheme();
+        _leftChart.ApplyTheme();
+        _rightChart.ApplyTheme();
     }
 }

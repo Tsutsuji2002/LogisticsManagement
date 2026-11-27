@@ -40,6 +40,9 @@
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.4" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="6.0.0" />
 
+    <!-- Desktop UI (Ant Design for WinForms - Apache-2.0) -->
+    <PackageVersion Include="AntdUI" Version="2.4.21" />
+
     <!-- Testing -->
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.2" />

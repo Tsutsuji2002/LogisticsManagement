@@ -1,14 +1,16 @@
 using System.Diagnostics;
+using AntdUI;
 using Logistics.Client.Application.Contracts.Auth;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.WinForms.Controls.Common;
 using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Settings;
 
-public sealed class SettingsWorkspaceControl : ModuleViewBase
+public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly IAuthSessionApiClient _authSessionApi;
     private readonly IAuthenticationService _authService;
@@ -16,14 +18,18 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase
     private readonly IHealthApiClient _healthClient;
     private readonly ILogger<SettingsWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs;
-    private readonly Label _profileSummaryLabel = new() { AutoSize = true, Font = AppTheme.BodyFont };
+    private readonly AntdUI.Tabs _tabs;
+    private AntdUI.Panel _profileCard = null!;
+    private AntdUI.TabPage _configTab = null!;
+    private AntdUI.Panel _configCard = null!;
+    private readonly Label _profileSummaryLabel = new() { AutoSize = true, Font = AppTheme.BodyFont, BackColor = Color.Transparent };
     private readonly PagedDataGridControl _sessionsGrid;
 
-    private ComboBox _envCombo = null!;
-    private TextBox _urlBox = null!;
-    private NumericUpDown _timeoutBox = null!;
-    private ComboBox _langCombo = null!;
+    private AntdUI.Select _envCombo = null!;
+    private AntdUI.Input _urlBox = null!;
+    private AntdUI.InputNumber _timeoutBox = null!;
+    private AntdUI.Select _langCombo = null!;
+    private AntdUI.Select _themeCombo = null!;
 
     public SettingsWorkspaceControl(
         IAuthSessionApiClient authSessionApi,
@@ -38,14 +44,17 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase
         _healthClient = healthClient;
         _logger = logger;
 
-        Padding = new Padding(16);
-        _tabs = new TabControl { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
+        Padding = new Padding(8);
+        _tabs = AppTheme.CreateAntdTabs();
 
         // Tab 1: Profile & Security
-        var profileTab = new TabPage("Hồ sơ & Mật khẩu") { BackColor = AppTheme.SurfaceBg, Padding = new Padding(16) };
-        var profileCard = new Panel { Dock = DockStyle.Top, Height = 260, BackColor = AppTheme.CardBg, Padding = new Padding(20) };
-        _profileSummaryLabel.Location = new Point(20, 20);
-        var btnBar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44 };
+        var profileTab = new AntdUI.TabPage { Text = "Hồ sơ & Mật khẩu", Padding = new Padding(12) };
+        _profileCard = AppTheme.CreateCardPanel(new Padding(22));
+        _profileCard.Dock = DockStyle.Top;
+        _profileCard.Height = 270;
+        _profileSummaryLabel.Location = new Point(22, 22);
+
+        var btnBar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, BackColor = Color.Transparent };
         var changePwdBtn = AppTheme.CreatePrimaryButton("Đổi mật khẩu", 140);
         changePwdBtn.Click += async (_, _) => await ChangePasswordAsync();
         var refreshProfileBtn = AppTheme.CreateSecondaryButton("Đồng bộ quyền (/auth/me)", 180);
@@ -56,12 +65,12 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase
             UiAsyncRunner.ShowInfo(this, "Đã cập nhật hồ sơ & phân quyền mới nhất từ máy chủ.");
         }, refreshProfileBtn, logger: _logger);
         btnBar.Controls.AddRange([changePwdBtn, refreshProfileBtn]);
-        profileCard.Controls.Add(_profileSummaryLabel);
-        profileCard.Controls.Add(btnBar);
-        profileTab.Controls.Add(profileCard);
+        _profileCard.Controls.Add(_profileSummaryLabel);
+        _profileCard.Controls.Add(btnBar);
+        profileTab.Controls.Add(_profileCard);
 
         // Tab 2: Active Sessions
-        var sessionsTab = new TabPage("Phiên đăng nhập") { BackColor = AppTheme.SurfaceBg };
+        var sessionsTab = new AntdUI.TabPage { Text = "Phiên đăng nhập" };
         _sessionsGrid = new PagedDataGridControl("Phiên làm việc hiện tại", "Quản lý thiết bị đang đăng nhập vào tài khoản của bạn.", showSearch: false, showPagination: false);
         var terminateBtn = AppTheme.CreateDangerButton("Ngắt phiên chọn", 135);
         terminateBtn.Click += async (_, _) => await TerminateSelectedSessionAsync();
@@ -77,45 +86,59 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase
         sessionsTab.Controls.Add(_sessionsGrid);
 
         // Tab 3: Application Config & Diagnostics
-        var configTab = new TabPage("Cấu hình API & Nhật ký") { BackColor = AppTheme.CardBg, Padding = new Padding(24) };
-        BuildConfigTab(configTab);
+        _configTab = new AntdUI.TabPage { Text = "Cấu hình API, Giao diện & Nhật ký", Padding = new Padding(12) };
+        BuildConfigTab(_configTab);
 
-        _tabs.TabPages.AddRange([profileTab, sessionsTab, configTab]);
+        _tabs.Pages.AddRange([profileTab, sessionsTab, _configTab]);
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
-    private void BuildConfigTab(TabPage tab)
+    private void BuildConfigTab(AntdUI.TabPage tab)
     {
-        var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, MaximumSize = new Size(640, 0) };
+        _configCard = AppTheme.CreateCardPanel(new Padding(24));
+        _configCard.Dock = DockStyle.Top;
+        _configCard.Height = 360;
+
+        var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, MaximumSize = new Size(680, 0), BackColor = Color.Transparent };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35F));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65F));
 
-        _envCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
-        _envCombo.Items.AddRange(["Development", "Production"]);
-        _urlBox = new TextBox { Dock = DockStyle.Fill };
-        _timeoutBox = new NumericUpDown { Dock = DockStyle.Fill, Minimum = 5, Maximum = 300, Value = 30 };
-        _langCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
-        _langCombo.Items.AddRange([new ModalComboOption("vi-VN", "Tiếng Việt (vi-VN)"), new ModalComboOption("en-US", "English (en-US)")]);
+        _envCombo = new AntdUI.Select { Dock = DockStyle.Fill, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont };
+        _envCombo.Items.AddRange([new SelectItem("Development", "Development"), new SelectItem("Production", "Production")]);
+
+        _urlBox = new AntdUI.Input { Dock = DockStyle.Fill, Height = 34, Radius = 6, Font = AppTheme.BodyFont };
+        _timeoutBox = new AntdUI.InputNumber { Dock = DockStyle.Fill, Height = 34, Radius = 6, Minimum = 5, Maximum = 300, DecimalPlaces = 0, Value = 30, Font = AppTheme.BodyFont };
+
+        _langCombo = new AntdUI.Select { Dock = DockStyle.Fill, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont };
+        _langCombo.Items.AddRange([new SelectItem("Tiếng Việt (vi-VN)", "vi-VN"), new SelectItem("English (en-US)", "en-US")]);
+
+        _themeCombo = new AntdUI.Select { Dock = DockStyle.Fill, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont };
+        _themeCombo.Items.AddRange([new SelectItem("Light Theme (Sáng)", "Light"), new SelectItem("Dark Theme (Tối)", "Dark")]);
 
         AddRow(table, 0, "Môi trường:", _envCombo);
         AddRow(table, 1, "API Base URL:", _urlBox);
         AddRow(table, 2, "Timeout (giây):", _timeoutBox);
         AddRow(table, 3, "Ngôn ngữ giao diện:", _langCombo);
+        AddRow(table, 4, "Chủ đề giao diện:", _themeCombo);
 
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 52, Padding = new Padding(0, 12, 0, 0) };
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 54, Padding = new Padding(0, 14, 0, 0), BackColor = Color.Transparent };
         var saveBtn = AppTheme.CreatePrimaryButton("Lưu cấu hình", 130);
         saveBtn.Click += (_, _) =>
         {
-            var env = _envCombo.SelectedItem?.ToString() ?? "Development";
-            var lang = (_langCombo.SelectedItem as ModalComboOption)?.Value?.ToString() ?? "vi-VN";
+            var env = _envCombo.SelectedValue?.ToString() ?? "Development";
+            var lang = _langCombo.SelectedValue?.ToString() ?? "vi-VN";
+            var themeRaw = _themeCombo.SelectedValue?.ToString() ?? "Light";
             try
             {
                 _settingsService.UpdateSettings(env, _urlBox.Text, (int)_timeoutBox.Value, lang);
-                UiAsyncRunner.ShowInfo(this, "Đã lưu cấu hình API và ngôn ngữ.");
+                if (Enum.TryParse<AppThemeMode>(themeRaw, true, out var nextMode))
+                    AppTheme.SetTheme(nextMode, FindForm());
+                UiAsyncRunner.ShowInfo(this, "Đã lưu cấu hình API, ngôn ngữ và giao diện.");
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, "Cấu hình không hợp lệ", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                UiAsyncRunner.ShowModalAlert(this, "Cấu hình không hợp lệ", ex.Message, TType.Warn);
             }
         };
         var testBtn = AppTheme.CreateSecondaryButton("Kiểm tra API", 120);
@@ -134,14 +157,15 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase
         };
 
         actions.Controls.AddRange([saveBtn, testBtn, openLogsBtn]);
-        tab.Controls.Add(actions);
-        tab.Controls.Add(table);
+        _configCard.Controls.Add(actions);
+        _configCard.Controls.Add(table);
+        tab.Controls.Add(_configCard);
     }
 
     private static void AddRow(TableLayoutPanel t, int row, string label, Control input)
     {
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        t.Controls.Add(new Label { Text = label, AutoSize = true, Font = AppTheme.BodyBoldFont, Padding = new Padding(0, 6, 8, 8) }, 0, row);
+        t.Controls.Add(new Label { Text = label, AutoSize = true, Font = AppTheme.BodyBoldFont, Padding = new Padding(0, 8, 8, 8), BackColor = Color.Transparent }, 0, row);
         input.Margin = new Padding(0, 4, 0, 8);
         t.Controls.Add(input, 1, row);
     }
@@ -150,10 +174,11 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase
     {
         RenderProfile();
         var s = _settingsService.Settings;
-        _envCombo.SelectedItem = s.Environment;
+        _envCombo.SelectedValue = s.Environment;
         _urlBox.Text = s.ApiBaseUrl;
         _timeoutBox.Value = Math.Clamp(s.TimeoutSeconds, 5, 300);
-        _langCombo.SelectedIndex = string.Equals(s.Culture, "en-US", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        _langCombo.SelectedValue = string.Equals(s.Culture, "en-US", StringComparison.OrdinalIgnoreCase) ? "en-US" : "vi-VN";
+        _themeCombo.SelectedValue = AppTheme.CurrentMode.ToString();
         await LoadSessionsAsync();
     }
 
@@ -214,5 +239,15 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase
             UiAsyncRunner.ShowInfo(this, "Đổi mật khẩu thành công. Hệ thống sẽ yêu cầu đăng nhập lại.");
             await _authService.LogoutAsync();
         }
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _profileCard.Back = AppTheme.CardBg;
+        _profileCard.BorderColor = AppTheme.BorderSubtle;
+        _profileSummaryLabel.ForeColor = AppTheme.TextPrimary;
+        _configCard.Back = AppTheme.CardBg;
+        _configCard.BorderColor = AppTheme.BorderSubtle;
     }
 }

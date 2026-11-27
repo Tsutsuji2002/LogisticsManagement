@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Cod;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -6,10 +7,11 @@ using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Logistics.Shared.Contracts.Pagination;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.COD;
 
-public sealed class CodWorkspaceControl : ModuleViewBase
+public sealed class CodWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly ICodApiClient _codApi;
     private readonly IShippingApiClient _shippingApi;
@@ -20,21 +22,24 @@ public sealed class CodWorkspaceControl : ModuleViewBase
     private readonly IBranchContextService _branchContext;
     private readonly ILogger<CodWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabCollections = new("Thu hộ COD (Collections)") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabRemittances = new("Bảng kê hoàn trả COD (Remittances)") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabRecon = new("Đối soát COD (Reconciliation)") { BackColor = AppTheme.SurfaceBg, Padding = new Padding(16) };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabCollections = new() { Text = "Thu hộ COD (Collections)" };
+    private readonly AntdUI.TabPage _tabRemittances = new() { Text = "Bảng kê hoàn trả COD (Remittances)" };
+    private readonly AntdUI.TabPage _tabRecon = new() { Text = "Đối soát COD (Reconciliation)", Padding = new Padding(12) };
 
     private PagedDataGridControl _collectionsGrid = null!;
-    private readonly ComboBox _colStatusFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 145, Margin = new Padding(0, 4, 8, 0) };
-    private readonly Label _colSummaryLabel = new() { Dock = DockStyle.Top, Height = 44, BackColor = AppTheme.CardBg, Padding = new Padding(12, 10, 12, 6), Font = AppTheme.BodyBoldFont };
+    private readonly AntdUI.Select _colStatusFilter = new() { Width = 175, Height = 32, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 4) };
+    private readonly AntdUI.Alert _colSummaryLabel = new() { Dock = DockStyle.Top, Height = 44, Radius = 6, Icon = TType.Info, Font = AppTheme.BodyBoldFont, Margin = new Padding(0, 0, 0, 8), Text = "Tổng hợp thu hộ COD..." };
 
     private PagedDataGridControl _remittancesGrid = null!;
-    private readonly DataGridView _remItemsGrid = new() { Dock = DockStyle.Fill };
+    private AntdUI.Panel _remItemsCard = null!;
+    private readonly AntdUI.Table _remItemsGrid = AppTheme.CreateAntdTable();
     private CodRemittanceDto? _selectedRemittance;
 
-    private readonly Label _reconSummaryLabel = new() { Dock = DockStyle.Top, Height = 120, BackColor = AppTheme.CardBg, Padding = new Padding(16), Font = AppTheme.BodyFont };
-    private ComboBox _reconEmployeeCombo = null!;
+    private AntdUI.Panel _reconSummaryCard = null!;
+    private readonly Label _reconSummaryLabel = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont, BackColor = Color.Transparent };
+    private AntdUI.Select _reconEmployeeCombo = null!;
+    private AntdUI.Panel _reconDetailCard = null!;
     private Label _reconDetailLabel = null!;
 
     public CodWorkspaceControl(
@@ -60,12 +65,13 @@ public sealed class CodWorkspaceControl : ModuleViewBase
         BuildRemittancesTab();
         BuildReconTab();
 
-        if (_auth.HasPermission(ClientPermissions.Cod.CollectionsRead)) _tabs.TabPages.Add(_tabCollections);
-        if (_auth.HasPermission(ClientPermissions.Cod.RemittancesRead)) _tabs.TabPages.Add(_tabRemittances);
-        if (_auth.HasPermission(ClientPermissions.Cod.ReconciliationRead)) _tabs.TabPages.Add(_tabRecon);
+        if (_auth.HasPermission(ClientPermissions.Cod.CollectionsRead)) _tabs.Pages.Add(_tabCollections);
+        if (_auth.HasPermission(ClientPermissions.Cod.RemittancesRead)) _tabs.Pages.Add(_tabRemittances);
+        if (_auth.HasPermission(ClientPermissions.Cod.ReconciliationRead)) _tabs.Pages.Add(_tabRecon);
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
@@ -76,13 +82,21 @@ public sealed class CodWorkspaceControl : ModuleViewBase
             "Cod.Reconciliation" => _tabRecon,
             _ => _tabCollections
         };
-        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
+        if (_tabs.Pages.Contains(tab)) _tabs.SelectedTab = tab;
     }
 
     private void BuildCollectionsTab()
     {
         _collectionsGrid = new PagedDataGridControl("Phiếu thu hộ COD (CODCollections)", "Tách bạch rõ: Dự kiến -> Tài xế thu -> Nộp chi nhánh -> Thủ quỹ xác nhận -> Đã hoàn trả.");
-        _colStatusFilter.Items.AddRange(["", "Pending", "CollectedByDriver", "DepositedToBranch", "VerifiedByCashier", "RemittedToCustomer", "CollectionFailed"]);
+        _colStatusFilter.Items.AddRange([
+            new SelectItem("Tất cả trạng thái", ""),
+            new SelectItem("Pending", "Pending"),
+            new SelectItem("CollectedByDriver", "CollectedByDriver"),
+            new SelectItem("DepositedToBranch", "DepositedToBranch"),
+            new SelectItem("VerifiedByCashier", "VerifiedByCashier"),
+            new SelectItem("RemittedToCustomer", "RemittedToCustomer"),
+            new SelectItem("CollectionFailed", "CollectionFailed")
+        ]);
         _colStatusFilter.SelectedIndex = 0;
         _colStatusFilter.SelectedIndexChanged += (_, _) => _collectionsGrid.ResetAndReload();
         _collectionsGrid.AddFilterControl(_colStatusFilter);
@@ -147,39 +161,47 @@ public sealed class CodWorkspaceControl : ModuleViewBase
         _remittancesGrid.ReloadRequested += async (_, _) => await LoadRemittancesAsync();
         _remittancesGrid.SelectionChanged += async (_, _) => await LoadRemittanceItemsAsync();
 
-        var itemsPanel = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.CardBg, Padding = new Padding(10) };
-        itemsPanel.Controls.Add(_remItemsGrid);
-        itemsPanel.Controls.Add(new Label { Text = "Chi tiết khoản thu COD trong bảng kê", Dock = DockStyle.Top, Height = 28, Font = AppTheme.SectionTitleFont });
-        AppTheme.StyleDataGrid(_remItemsGrid);
+        _remItemsCard = AppTheme.CreateCardPanel(new Padding(10));
+        _remItemsCard.Dock = DockStyle.Fill;
+        _remItemsCard.Controls.Add(_remItemsGrid);
+        _remItemsCard.Controls.Add(new Label { Text = "Chi tiết khoản thu COD trong bảng kê", Dock = DockStyle.Top, Height = 28, Font = AppTheme.SectionTitleFont, BackColor = Color.Transparent });
 
         split.Panel1.Controls.Add(_remittancesGrid);
-        split.Panel2.Controls.Add(itemsPanel);
+        split.Panel2.Controls.Add(_remItemsCard);
         _tabRemittances.Controls.Add(split);
     }
 
     private void BuildReconTab()
     {
-        var actionPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 52, Padding = new Padding(0, 10, 0, 6) };
-        _reconEmployeeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260, Font = AppTheme.BodyFont };
+        _reconSummaryCard = AppTheme.CreateCardPanel(new Padding(16));
+        _reconSummaryCard.Dock = DockStyle.Top;
+        _reconSummaryCard.Height = 122;
+        _reconSummaryCard.Margin = new Padding(0, 0, 0, 8);
+        _reconSummaryCard.Controls.Add(_reconSummaryLabel);
+
+        var actionPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 52, Padding = new Padding(0, 8, 0, 6), BackColor = Color.Transparent };
+        _reconEmployeeCombo = new AntdUI.Select { Width = 280, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 0) };
         var empBtn = AppTheme.CreatePrimaryButton("Đối soát tài xế", 130);
         empBtn.Click += async (_, _) => await ReconcileEmployeeAsync();
         var branchBtn = AppTheme.CreateSecondaryButton("Đối soát chi nhánh hiện tại", 190);
         branchBtn.Click += async (_, _) => await ReconcileBranchAsync();
         actionPanel.Controls.AddRange([_reconEmployeeCombo, empBtn, branchBtn]);
 
+        _reconDetailCard = AppTheme.CreateCardPanel(new Padding(16));
+        _reconDetailCard.Dock = DockStyle.Fill;
         _reconDetailLabel = new Label
         {
             Dock = DockStyle.Fill,
-            BackColor = AppTheme.CardBg,
-            Padding = new Padding(16),
+            BackColor = Color.Transparent,
             Font = AppTheme.BodyFont,
             ForeColor = AppTheme.TextPrimary,
             Text = "Chọn nhân viên hoặc chi nhánh để đối soát công quỹ COD theo thời gian thực."
         };
+        _reconDetailCard.Controls.Add(_reconDetailLabel);
 
-        _tabRecon.Controls.Add(_reconDetailLabel);
+        _tabRecon.Controls.Add(_reconDetailCard);
         _tabRecon.Controls.Add(actionPanel);
-        _tabRecon.Controls.Add(_reconSummaryLabel);
+        _tabRecon.Controls.Add(_reconSummaryCard);
     }
 
     protected override async Task RefreshDataAsync()
@@ -194,7 +216,7 @@ public sealed class CodWorkspaceControl : ModuleViewBase
         _collectionsGrid.SetLoading(true);
         await UiAsyncRunner.RunSafeAsync(this, async () =>
         {
-            var status = _colStatusFilter.SelectedItem?.ToString();
+            var status = _colStatusFilter.SelectedValue?.ToString();
             var list = await _codApi.GetCollectionsAsync(_branchContext.ActiveBranchId, null, null, string.IsNullOrWhiteSpace(status) ? null : status, _collectionsGrid.CurrentPage, _collectionsGrid.CurrentPageSize);
             _collectionsGrid.BindPagedData(list);
 
@@ -220,9 +242,9 @@ public sealed class CodWorkspaceControl : ModuleViewBase
     private async Task LoadRemittanceItemsAsync()
     {
         _selectedRemittance = _remittancesGrid.GetSelectedRow<CodRemittanceDto>();
-        if (_selectedRemittance == null) { _remItemsGrid.DataSource = null; return; }
+        if (_selectedRemittance == null) { AppTheme.BindAntdTable(_remItemsGrid, Array.Empty<CodRemittanceItemDto>()); return; }
         var full = await _codApi.GetRemittanceByIdAsync(_selectedRemittance.Id);
-        _remItemsGrid.DataSource = full.Items;
+        AppTheme.BindAntdTable(_remItemsGrid, full.Items);
     }
 
     private async Task LoadReconSummaryAsync()
@@ -238,7 +260,7 @@ public sealed class CodWorkspaceControl : ModuleViewBase
             var emps = await _orgApi.GetEmployeesAsync(null, _branchContext.ActiveBranchId, null, "Active", new PagedRequest { Page = 1, PageSize = 100 });
             _reconEmployeeCombo.Items.Clear();
             foreach (var e in emps.Items)
-                _reconEmployeeCombo.Items.Add(new ModalComboOption(e.Id, $"{e.Code} - {e.FullName}"));
+                _reconEmployeeCombo.Items.Add(new SelectItem($"{e.Code} - {e.FullName}", e.Id));
             if (_reconEmployeeCombo.Items.Count > 0) _reconEmployeeCombo.SelectedIndex = 0;
         }, null, null, _logger);
     }
@@ -402,8 +424,8 @@ public sealed class CodWorkspaceControl : ModuleViewBase
 
     private async Task ReconcileEmployeeAsync()
     {
-        if (_reconEmployeeCombo.SelectedItem is not ModalComboOption opt || opt.Value == null) return;
-        var empId = Convert.ToInt64(opt.Value);
+        if (_reconEmployeeCombo.SelectedIndex < 0 || _reconEmployeeCombo.SelectedIndex >= _reconEmployeeCombo.Items.Count) return;
+        if (_reconEmployeeCombo.Items[_reconEmployeeCombo.SelectedIndex] is not SelectItem item || item.Tag is not long empId) return;
         await UiAsyncRunner.RunSafeAsync(this, async () =>
         {
             var r = await _codApi.ReconcileEmployeeAsync(empId);
@@ -432,5 +454,18 @@ public sealed class CodWorkspaceControl : ModuleViewBase
                 $"• Đã hoàn trả từ chi nhánh: {AppTheme.FormatMoney(r.TotalRemittedFromBranch)}\n" +
                 $"• Tồn quỹ COD chi nhánh hiện giữ: {AppTheme.FormatMoney(r.CurrentBranchCashHolding)}";
         }, null, null, _logger);
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _remItemsCard.Back = AppTheme.CardBg;
+        _remItemsCard.BorderColor = AppTheme.BorderSubtle;
+        _reconSummaryCard.Back = AppTheme.CardBg;
+        _reconSummaryCard.BorderColor = AppTheme.BorderSubtle;
+        _reconSummaryLabel.ForeColor = AppTheme.TextPrimary;
+        _reconDetailCard.Back = AppTheme.CardBg;
+        _reconDetailCard.BorderColor = AppTheme.BorderSubtle;
+        _reconDetailLabel.ForeColor = AppTheme.TextPrimary;
     }
 }

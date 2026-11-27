@@ -1,10 +1,12 @@
+using AntdUI;
 using Logistics.Client.Infrastructure.Exceptions;
+using Logistics.Client.WinForms.Themes;
 using Microsoft.Extensions.Logging;
 
 namespace Logistics.Client.WinForms.Helpers;
 
 /// <summary>
-/// Centralizes async execution, duplicate-submit locking, API error handling, and user confirmation prompts.
+/// Centralizes async execution, duplicate-submit locking, AntdUI error banners/modals, and toast notifications.
 /// </summary>
 public static class UiAsyncRunner
 {
@@ -12,7 +14,7 @@ public static class UiAsyncRunner
         Control owner,
         Func<Task> action,
         Control? disableWhileRunning = null,
-        Label? errorLabel = null,
+        Control? errorBanner = null,
         ILogger? logger = null,
         bool showMessageBoxOnError = true)
     {
@@ -20,8 +22,8 @@ public static class UiAsyncRunner
 
         try
         {
-            if (disableWhileRunning != null) disableWhileRunning.Enabled = false;
-            if (errorLabel != null) errorLabel.Visible = false;
+            SetControlBusy(disableWhileRunning, true);
+            HideErrorBanner(errorBanner);
             owner.UseWaitCursor = true;
 
             await action();
@@ -34,29 +36,23 @@ public static class UiAsyncRunner
         {
             logger?.LogWarning("API error ({StatusCode}, {ErrorCode}): {Message}", (int)ex.StatusCode, ex.ErrorCode, ex.Message);
             var msg = FormatApiErrorMessage(ex);
-            if (errorLabel != null)
-            {
-                errorLabel.Text = msg;
-                errorLabel.Visible = true;
-            }
+            ShowErrorBanner(errorBanner, msg);
+
             if (showMessageBoxOnError && !owner.IsDisposed)
             {
-                var icon = ex.IsForbidden ? MessageBoxIcon.Warning : MessageBoxIcon.Error;
-                MessageBox.Show(owner, msg, "Thông báo lỗi API", MessageBoxButtons.OK, icon);
+                var icon = ex.IsForbidden ? TType.Warn : TType.Error;
+                ShowModalAlert(owner, "Thông báo lỗi API", msg, icon);
             }
         }
         catch (Exception ex)
         {
             logger?.LogError(ex, "Unhandled UI operation exception.");
             var msg = $"Đã xảy ra lỗi không mong muốn: {ex.Message}";
-            if (errorLabel != null)
-            {
-                errorLabel.Text = msg;
-                errorLabel.Visible = true;
-            }
+            ShowErrorBanner(errorBanner, msg);
+
             if (showMessageBoxOnError && !owner.IsDisposed)
             {
-                MessageBox.Show(owner, msg, "Lỗi ứng dụng", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowModalAlert(owner, "Lỗi ứng dụng", msg, TType.Error);
             }
         }
         finally
@@ -64,9 +60,45 @@ public static class UiAsyncRunner
             if (!owner.IsDisposed)
             {
                 owner.UseWaitCursor = false;
-                if (disableWhileRunning != null && !disableWhileRunning.IsDisposed)
-                    disableWhileRunning.Enabled = true;
+                SetControlBusy(disableWhileRunning, false);
             }
+        }
+    }
+
+    private static void SetControlBusy(Control? ctrl, bool busy)
+    {
+        if (ctrl == null || ctrl.IsDisposed) return;
+
+        if (ctrl is AntdUI.Button antBtn)
+        {
+            antBtn.Loading = busy;
+            antBtn.Enabled = !busy;
+        }
+        else
+        {
+            ctrl.Enabled = !busy;
+        }
+    }
+
+    private static void HideErrorBanner(Control? banner)
+    {
+        if (banner == null || banner.IsDisposed) return;
+        banner.Visible = false;
+    }
+
+    private static void ShowErrorBanner(Control? banner, string msg)
+    {
+        if (banner == null || banner.IsDisposed) return;
+        if (banner is Alert alert)
+        {
+            alert.Text = msg;
+            alert.Icon = TType.Error;
+            alert.Visible = true;
+        }
+        else
+        {
+            banner.Text = msg;
+            banner.Visible = true;
         }
     }
 
@@ -87,8 +119,88 @@ public static class UiAsyncRunner
     }
 
     public static bool Confirm(IWin32Window owner, string message, string title = "Xác nhận thao tác")
-        => MessageBox.Show(owner, message, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    {
+        var form = ResolveForm(owner);
+        if (form != null)
+        {
+            var cfg = new Modal.Config(form, title, message, TType.Warn)
+            {
+                OkText = "Xác nhận",
+                CancelText = "Hủy",
+                OkType = TTypeMini.Primary,
+                ColorScheme = AppTheme.IsDark ? TAMode.Dark : TAMode.Light,
+                Width = 440
+            };
+            return Modal.open(cfg) == DialogResult.OK;
+        }
+
+        return MessageBox.Show(owner, message, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    }
 
     public static void ShowInfo(IWin32Window owner, string message, string title = "Thành công")
-        => MessageBox.Show(owner, message, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
+    {
+        var form = ResolveForm(owner);
+        if (form != null)
+        {
+            var cfg = new Modal.Config(form, title, message, TType.Success)
+            {
+                OkText = "Đóng",
+                CancelText = string.Empty,
+                OkType = TTypeMini.Primary,
+                ColorScheme = AppTheme.IsDark ? TAMode.Dark : TAMode.Light,
+                Width = 440
+            };
+            Modal.open(cfg);
+            return;
+        }
+
+        MessageBox.Show(owner, message, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    public static void ShowModalAlert(IWin32Window owner, string title, string message, TType icon)
+    {
+        var form = ResolveForm(owner);
+        if (form != null)
+        {
+            var cfg = new Modal.Config(form, title, message, icon)
+            {
+                OkText = "Đóng",
+                CancelText = string.Empty,
+                OkType = icon == TType.Error ? TTypeMini.Error : TTypeMini.Primary,
+                ColorScheme = AppTheme.IsDark ? TAMode.Dark : TAMode.Light,
+                Width = 480
+            };
+            Modal.open(cfg);
+            return;
+        }
+
+        var mbIcon = icon switch
+        {
+            TType.Warn => MessageBoxIcon.Warning,
+            TType.Error => MessageBoxIcon.Error,
+            _ => MessageBoxIcon.Information
+        };
+        MessageBox.Show(owner, message, title, MessageBoxButtons.OK, mbIcon);
+    }
+
+    public static void ShowToastSuccess(Control owner, string text)
+    {
+        var form = owner.FindForm();
+        if (form != null && !form.IsDisposed)
+            AntdUI.Message.success(form, text, AppTheme.BodyFont, 3);
+    }
+
+    public static void ShowToastInfo(Control owner, string text)
+    {
+        var form = owner.FindForm();
+        if (form != null && !form.IsDisposed)
+            AntdUI.Message.info(form, text, AppTheme.BodyFont, 3);
+    }
+
+    private static Form? ResolveForm(IWin32Window owner)
+    {
+        if (owner is Form f && !f.IsDisposed) return f;
+        if (owner is Control c && !c.IsDisposed) return c.FindForm();
+        return Form.ActiveForm;
+    }
 }

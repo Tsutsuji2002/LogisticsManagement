@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Sales;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -6,10 +7,11 @@ using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Logistics.Shared.Contracts.Pagination;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Sales;
 
-public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
+public sealed class SalesOrdersWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly ISalesApiClient _salesApi;
     private readonly ICrmApiClient _crmApi;
@@ -19,11 +21,13 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
     private readonly ILogger<SalesOrdersWorkspaceControl> _logger;
 
     private readonly PagedDataGridControl _ordersGrid;
-    private readonly ComboBox _statusFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140, Margin = new Padding(0, 4, 8, 0) };
-    private readonly Label _detailHeaderLabel = new() { Dock = DockStyle.Top, Height = 58, BackColor = AppTheme.CardBg, Padding = new Padding(12, 8, 12, 6), Font = AppTheme.BodyFont };
-    private readonly DataGridView _itemsGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _packagesGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _addressesGrid = new() { Dock = DockStyle.Fill };
+    private readonly AntdUI.Select _statusFilter = new() { Width = 175, Height = 32, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 4) };
+    private readonly AntdUI.Panel _detailHeaderCard;
+    private readonly Label _detailHeaderLabel = new() { Dock = DockStyle.Fill, BackColor = Color.Transparent, Font = AppTheme.BodyFont };
+    private readonly AntdUI.Panel _detailTabsCard;
+    private readonly AntdUI.Table _itemsGrid = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _packagesGrid = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _addressesGrid = AppTheme.CreateAntdTable();
 
     private OrderDetailDto? _selectedDetail;
 
@@ -45,7 +49,16 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
         var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 330, 200, 200);
 
         _ordersGrid = new PagedDataGridControl("Đơn hàng (Sales Orders)", "Tạo đơn, xác nhận và hủy đơn hàng theo vòng đời backend.");
-        _statusFilter.Items.AddRange(["", "Draft", "Confirmed", "Processing", "PartiallyShipped", "Shipped", "Delivered", "Cancelled"]);
+        _statusFilter.Items.AddRange([
+            new SelectItem("Tất cả trạng thái", ""),
+            new SelectItem("Draft", "Draft"),
+            new SelectItem("Confirmed", "Confirmed"),
+            new SelectItem("Processing", "Processing"),
+            new SelectItem("PartiallyShipped", "PartiallyShipped"),
+            new SelectItem("Shipped", "Shipped"),
+            new SelectItem("Delivered", "Delivered"),
+            new SelectItem("Cancelled", "Cancelled")
+        ]);
         _statusFilter.SelectedIndex = 0;
         _statusFilter.SelectedIndexChanged += (_, _) => _ordersGrid.ResetAndReload();
         _ordersGrid.AddFilterControl(_statusFilter);
@@ -73,13 +86,10 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
         _ordersGrid.SelectionChanged += async (_, _) => await LoadSelectedOrderDetailAsync();
         split.Panel1.Controls.Add(_ordersGrid);
 
-        var detailTabs = new TabControl { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-        AppTheme.StyleDataGrid(_itemsGrid);
-        AppTheme.StyleDataGrid(_packagesGrid);
-        AppTheme.StyleDataGrid(_addressesGrid);
+        var detailTabs = AppTheme.CreateAntdTabs();
 
-        var tItems = new TabPage("Sản phẩm (OrderItems)");
-        var itemBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38, Padding = new Padding(4) };
+        var tItems = new AntdUI.TabPage { Text = "Sản phẩm (OrderItems)" };
+        var itemBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(4), BackColor = Color.Transparent };
         if (_auth.HasPermission(ClientPermissions.Sales.OrdersUpdate))
         {
             var addItemBtn = AppTheme.CreatePrimaryButton("+ Thêm dòng hàng", 135);
@@ -89,8 +99,8 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
         tItems.Controls.Add(_itemsGrid);
         tItems.Controls.Add(itemBar);
 
-        var tPkgs = new TabPage("Kiện hàng (OrderPackages)");
-        var pkgBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38, Padding = new Padding(4) };
+        var tPkgs = new AntdUI.TabPage { Text = "Kiện hàng (OrderPackages)" };
+        var pkgBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(4), BackColor = Color.Transparent };
         if (_auth.HasPermission(ClientPermissions.Sales.OrdersUpdate))
         {
             var addPkgBtn = AppTheme.CreatePrimaryButton("+ Thêm kiện hàng", 135);
@@ -100,15 +110,27 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
         tPkgs.Controls.Add(_packagesGrid);
         tPkgs.Controls.Add(pkgBar);
 
-        var tAddr = new TabPage("Địa chỉ lấy / giao");
+        var tAddr = new AntdUI.TabPage { Text = "Địa chỉ lấy / giao" };
         tAddr.Controls.Add(_addressesGrid);
 
-        detailTabs.TabPages.AddRange([tItems, tPkgs, tAddr]);
-        split.Panel2.Padding = new Padding(12, 4, 12, 12);
-        split.Panel2.Controls.Add(detailTabs);
-        split.Panel2.Controls.Add(_detailHeaderLabel);
+        detailTabs.Pages.AddRange([tItems, tPkgs, tAddr]);
+
+        _detailHeaderCard = AppTheme.CreateCardPanel(new Padding(14, 8, 14, 8));
+        _detailHeaderCard.Dock = DockStyle.Top;
+        _detailHeaderCard.Height = 64;
+        _detailHeaderCard.Margin = new Padding(0, 0, 0, 8);
+        _detailHeaderCard.Controls.Add(_detailHeaderLabel);
+
+        _detailTabsCard = AppTheme.CreateCardPanel(new Padding(10));
+        _detailTabsCard.Dock = DockStyle.Fill;
+        _detailTabsCard.Controls.Add(detailTabs);
+
+        split.Panel2.Padding = new Padding(0, 8, 0, 0);
+        split.Panel2.Controls.Add(_detailTabsCard);
+        split.Panel2.Controls.Add(_detailHeaderCard);
 
         Controls.Add(split);
+        ApplyTheme();
     }
 
     protected override Task RefreshDataAsync() => LoadOrdersAsync();
@@ -118,7 +140,8 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
         await UiAsyncRunner.RunSafeAsync(this, async () =>
         {
             _ordersGrid.SetLoading(true);
-            var st = string.IsNullOrWhiteSpace(_statusFilter.SelectedItem?.ToString()) ? null : _statusFilter.SelectedItem?.ToString();
+            var rawStatus = _statusFilter.SelectedValue?.ToString();
+            var st = string.IsNullOrWhiteSpace(rawStatus) ? null : rawStatus;
             var paged = await _salesApi.GetOrdersAsync(_ordersGrid.SearchText, st, null, null, _branchContext.ActiveBranchId, null, null,
                 new PagedRequest { Page = _ordersGrid.CurrentPage, PageSize = _ordersGrid.CurrentPageSize });
             _ordersGrid.BindPagedData(paged);
@@ -136,9 +159,9 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
             _detailHeaderLabel.Text =
                 $"Đơn {_selectedDetail.OrderNumber} | Trạng thái: {_selectedDetail.OrderStatus} | Thanh toán: {_selectedDetail.PaymentStatus} | KH: {_selectedDetail.CustomerName}\n" +
                 $"Trọng lượng: {_selectedDetail.TotalWeightKg:N2} kg | Khai báo: {AppTheme.FormatMoney(_selectedDetail.DeclaredValue, _selectedDetail.CurrencyCode)} | COD: {AppTheme.FormatMoney(_selectedDetail.CodAmount, _selectedDetail.CurrencyCode)}";
-            _itemsGrid.DataSource = _selectedDetail.Items.ToList();
-            _packagesGrid.DataSource = _selectedDetail.Packages.ToList();
-            _addressesGrid.DataSource = _selectedDetail.Addresses.ToList();
+            AppTheme.BindAntdTable(_itemsGrid, _selectedDetail.Items);
+            AppTheme.BindAntdTable(_packagesGrid, _selectedDetail.Packages);
+            AppTheme.BindAntdTable(_addressesGrid, _selectedDetail.Addresses);
         }, logger: _logger, showMessageBoxOnError: false);
     }
 
@@ -159,7 +182,7 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
                 Options = customers.Items.Select(c => new ModalComboOption(c.Id, $"{c.CustomerCode} - {c.Name}")).ToList() },
             new ModalFieldSpec { Key = "BranchId", Label = "Chi nhánh", Kind = ModalFieldKind.ComboBox, Required = true, Options = branches, InitialValue = _branchContext.ActiveBranchId },
             new ModalFieldSpec { Key = "ProductId", Label = "Sản phẩm chính", Kind = ModalFieldKind.ComboBox,
-                Options = products.Items.Select(p => new ModalComboOption(p.Id, $"{p.Sku} - {p.Name}")).Prepend(new ModalComboOption(null, "(Nhập tay tên hàng)")).ToList() },
+                Options = products.Items.Select(p => new ModalComboOption(p.Id, $"{p.Sku} - {p.Name}")).Prepend(new ModalComboOption(0L, "(Nhập tay tên hàng)")).ToList() },
             new ModalFieldSpec { Key = "CustomProductName", Label = "Tên hàng (nếu nhập tay)", InitialValue = "Hàng hóa tiêu chuẩn" },
             new ModalFieldSpec { Key = "Quantity", Label = "Số lượng", Kind = ModalFieldKind.Integer, Required = true, InitialValue = 1 },
             new ModalFieldSpec { Key = "WeightKg", Label = "Cân nặng kiện (kg)", Kind = ModalFieldKind.Decimal, Required = true, InitialValue = 1.5m },
@@ -173,7 +196,7 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
             new ModalFieldSpec { Key = "RecipientAddress", Label = "Địa chỉ giao hàng", Required = true, InitialValue = "Quận Hoàn Kiếm, Hà Nội" }
         ], async v =>
         {
-            var prodId = v["ProductId"] as long?;
+            var prodId = v["ProductId"] is long pid && pid > 0 ? (long?)pid : null;
             var qty = Math.Max(1, Convert.ToInt32(v["Quantity"]));
             var wt = Convert.ToDecimal(v["WeightKg"]);
             var val = Convert.ToDecimal(v["DeclaredValue"]);
@@ -248,5 +271,15 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
             HeightCm = Convert.ToDecimal(v["HeightCm"]), DeclaredValue = Convert.ToDecimal(v["DeclaredValue"])
         }));
         if (dlg.ShowDialog(this) == DialogResult.OK) await LoadSelectedOrderDetailAsync();
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _detailHeaderCard.Back = AppTheme.CardBg;
+        _detailHeaderCard.BorderColor = AppTheme.BorderSubtle;
+        _detailHeaderLabel.ForeColor = AppTheme.TextPrimary;
+        _detailTabsCard.Back = AppTheme.CardBg;
+        _detailTabsCard.BorderColor = AppTheme.BorderSubtle;
     }
 }

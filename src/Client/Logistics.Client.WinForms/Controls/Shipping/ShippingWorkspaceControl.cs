@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Shipping;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -6,10 +7,11 @@ using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Logistics.Shared.Contracts.Pagination;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Shipping;
 
-public sealed class ShippingWorkspaceControl : ModuleViewBase
+public sealed class ShippingWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly IShippingApiClient _shippingApi;
     private readonly ISalesApiClient _salesApi;
@@ -18,19 +20,23 @@ public sealed class ShippingWorkspaceControl : ModuleViewBase
     private readonly IBranchContextService _branchContext;
     private readonly ILogger<ShippingWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabShipments = new("Vận đơn (Shipments)") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabPickups = new("Yêu cầu lấy hàng") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabReturns = new("Yêu cầu hoàn hàng") { BackColor = AppTheme.SurfaceBg };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabShipments = new() { Text = "Vận đơn (Shipments)" };
+    private readonly AntdUI.TabPage _tabPickups = new() { Text = "Yêu cầu lấy hàng" };
+    private readonly AntdUI.TabPage _tabReturns = new() { Text = "Yêu cầu hoàn hàng" };
 
     private PagedDataGridControl _shipmentsGrid = null!;
     private PagedDataGridControl _pickupsGrid = null!;
     private PagedDataGridControl _returnsGrid = null!;
-    private readonly Label _shipDetailBanner = new() { Dock = DockStyle.Top, Height = 56, BackColor = AppTheme.CardBg, Padding = new Padding(12, 8, 12, 6) };
-    private readonly DataGridView _attemptsGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _historyGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _assignmentsGrid = new() { Dock = DockStyle.Fill };
-    private readonly Label _podLabel = new() { Dock = DockStyle.Fill, Padding = new Padding(16), BackColor = AppTheme.CardBg };
+    private AntdUI.Panel _shipDetailCard = null!;
+    private readonly Label _shipDetailBanner = new() { Dock = DockStyle.Fill, BackColor = Color.Transparent, Font = AppTheme.BodyFont };
+    private AntdUI.Panel _detailTabsCard = null!;
+    private readonly AntdUI.Table _attemptsGrid = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _historyGrid = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _assignmentsGrid = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Timeline _timeline = new() { Dock = DockStyle.Fill };
+    private AntdUI.Panel _podCard = null!;
+    private readonly Label _podLabel = new() { Dock = DockStyle.Fill, Padding = new Padding(12), BackColor = Color.Transparent, Font = AppTheme.BodyFont };
 
     private ShipmentDetailDto? _selectedShipment;
 
@@ -53,12 +59,13 @@ public sealed class ShippingWorkspaceControl : ModuleViewBase
         BuildPickupsTab();
         BuildReturnsTab();
 
-        if (_auth.HasPermission(ClientPermissions.Shipping.ShipmentsRead)) _tabs.TabPages.Add(_tabShipments);
-        if (_auth.HasPermission(ClientPermissions.Shipping.PickupsRead)) _tabs.TabPages.Add(_tabPickups);
-        if (_auth.HasPermission(ClientPermissions.Shipping.ReturnsRead)) _tabs.TabPages.Add(_tabReturns);
+        if (_auth.HasPermission(ClientPermissions.Shipping.ShipmentsRead)) _tabs.Pages.Add(_tabShipments);
+        if (_auth.HasPermission(ClientPermissions.Shipping.PickupsRead)) _tabs.Pages.Add(_tabPickups);
+        if (_auth.HasPermission(ClientPermissions.Shipping.ReturnsRead)) _tabs.Pages.Add(_tabReturns);
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
@@ -69,7 +76,7 @@ public sealed class ShippingWorkspaceControl : ModuleViewBase
             "Shipping.Returns" => _tabReturns,
             _ => _tabShipments
         };
-        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
+        if (_tabs.Pages.Contains(tab)) _tabs.SelectedTab = tab;
     }
 
     private void BuildShipmentsTab()
@@ -115,19 +122,33 @@ public sealed class ShippingWorkspaceControl : ModuleViewBase
         _shipmentsGrid.SelectionChanged += async (_, _) => await LoadShipmentDetailAsync();
         split.Panel1.Controls.Add(_shipmentsGrid);
 
-        var detailTabs = new TabControl { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-        AppTheme.StyleDataGrid(_attemptsGrid);
-        AppTheme.StyleDataGrid(_historyGrid);
-        AppTheme.StyleDataGrid(_assignmentsGrid);
+        var detailTabs = AppTheme.CreateAntdTabs();
+        _podCard = AppTheme.CreateCardPanel(new Padding(12));
+        _podCard.Dock = DockStyle.Fill;
+        _podCard.Controls.Add(_podLabel);
 
-        detailTabs.TabPages.Add(new TabPage("Lần giao hàng (Attempts)") { Controls = { _attemptsGrid } });
-        detailTabs.TabPages.Add(new TabPage("Phân công giao nhận") { Controls = { _assignmentsGrid } });
-        detailTabs.TabPages.Add(new TabPage("Lịch sử trạng thái") { Controls = { _historyGrid } });
-        detailTabs.TabPages.Add(new TabPage("Bằng chứng giao (POD)") { Controls = { _podLabel } });
+        var timelineWrap = new System.Windows.Forms.Panel { Dock = DockStyle.Fill, Padding = new Padding(16, 12, 16, 12), BackColor = Color.Transparent, AutoScroll = true };
+        timelineWrap.Controls.Add(_timeline);
 
-        split.Panel2.Padding = new Padding(12, 4, 12, 12);
-        split.Panel2.Controls.Add(detailTabs);
-        split.Panel2.Controls.Add(_shipDetailBanner);
+        detailTabs.Pages.Add(new AntdUI.TabPage { Text = "Dòng thời gian (Timeline)", Controls = { timelineWrap } });
+        detailTabs.Pages.Add(new AntdUI.TabPage { Text = "Lần giao hàng (Attempts)", Controls = { _attemptsGrid } });
+        detailTabs.Pages.Add(new AntdUI.TabPage { Text = "Phân công giao nhận", Controls = { _assignmentsGrid } });
+        detailTabs.Pages.Add(new AntdUI.TabPage { Text = "Lịch sử trạng thái", Controls = { _historyGrid } });
+        detailTabs.Pages.Add(new AntdUI.TabPage { Text = "Bằng chứng giao (POD)", Controls = { _podCard } });
+
+        _shipDetailCard = AppTheme.CreateCardPanel(new Padding(14, 8, 14, 8));
+        _shipDetailCard.Dock = DockStyle.Top;
+        _shipDetailCard.Height = 64;
+        _shipDetailCard.Margin = new Padding(0, 0, 0, 8);
+        _shipDetailCard.Controls.Add(_shipDetailBanner);
+
+        _detailTabsCard = AppTheme.CreateCardPanel(new Padding(10));
+        _detailTabsCard.Dock = DockStyle.Fill;
+        _detailTabsCard.Controls.Add(detailTabs);
+
+        split.Panel2.Padding = new Padding(0, 8, 0, 0);
+        split.Panel2.Controls.Add(_detailTabsCard);
+        split.Panel2.Controls.Add(_shipDetailCard);
         _tabShipments.Controls.Add(split);
     }
 
@@ -214,9 +235,11 @@ public sealed class ShippingWorkspaceControl : ModuleViewBase
             _shipDetailBanner.Text =
                 $"VĐ: {_selectedShipment.TrackingNumber} | Trạng thái: {_selectedShipment.ShipmentStatus} | Dịch vụ: {_selectedShipment.ServiceType}\n" +
                 $"Tuyến: {_selectedShipment.OriginBranchName} -> {_selectedShipment.DestinationBranchName} | Cước: {AppTheme.FormatMoney(_selectedShipment.TotalAmount, _selectedShipment.CurrencyCode)} | COD: {AppTheme.FormatMoney(_selectedShipment.CodAmount, _selectedShipment.CurrencyCode)}";
-            _historyGrid.DataSource = _selectedShipment.StatusHistory.ToList();
-            _assignmentsGrid.DataSource = _selectedShipment.Assignments.ToList();
-            _attemptsGrid.DataSource = (await _shippingApi.GetDeliveryAttemptsAsync(_selectedShipment.Id.ToString())).ToList();
+            AppTheme.BindAntdTable(_historyGrid, _selectedShipment.StatusHistory);
+            AppTheme.BindAntdTable(_assignmentsGrid, _selectedShipment.Assignments);
+            var attempts = (await _shippingApi.GetDeliveryAttemptsAsync(_selectedShipment.Id.ToString())).ToList();
+            AppTheme.BindAntdTable(_attemptsGrid, attempts);
+            PopulateShipmentTimeline(_selectedShipment.StatusHistory);
             var pod = await _shippingApi.GetProofOfDeliveryAsync(_selectedShipment.Id.ToString());
             _podLabel.Text = pod == null
                 ? "Chưa có Proof of Delivery cho vận đơn này."
@@ -397,6 +420,38 @@ public sealed class ShippingWorkspaceControl : ModuleViewBase
         {
             OriginalShipmentId = Convert.ToInt64(v["OriginalShipmentId"]), ReasonCode = v["ReasonCode"]!.ToString()!, ReasonDescription = v["ReasonDescription"]!.ToString()!
         }));
-        if (dlg.ShowDialog(this) == DialogResult.OK) await LoadReturnsAsync();
+            if (dlg.ShowDialog(this) == DialogResult.OK) await LoadReturnsAsync();
+    }
+
+    private void PopulateShipmentTimeline(IReadOnlyList<ShipmentStatusHistoryDto> history)
+    {
+        _timeline.Items.Clear();
+        foreach (var h in history.OrderByDescending(x => x.ChangedAt))
+        {
+            var statusDesc = string.IsNullOrWhiteSpace(h.SubStatus)
+                ? $"{h.Status}  •  {AppTheme.FormatLocalTime(h.ChangedAt)}"
+                : $"{h.Status} ({h.SubStatus})  •  {AppTheme.FormatLocalTime(h.ChangedAt)}";
+            var loc = h.LocationWarehouseName ?? h.LocationBranchName ?? h.Source;
+            var details = string.IsNullOrWhiteSpace(h.Notes)
+                ? $"Địa điểm/Nguồn: {loc}"
+                : $"Địa điểm/Nguồn: {loc}  |  {h.Notes}";
+            _timeline.Items.Add(new TimelineItem(statusDesc, details)
+            {
+                Type = StatusTagHelper.ResolveType(h.Status)
+            });
+        }
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _shipDetailCard.Back = AppTheme.CardBg;
+        _shipDetailCard.BorderColor = AppTheme.BorderSubtle;
+        _shipDetailBanner.ForeColor = AppTheme.TextPrimary;
+        _detailTabsCard.Back = AppTheme.CardBg;
+        _detailTabsCard.BorderColor = AppTheme.BorderSubtle;
+        _podCard.Back = AppTheme.CardBg;
+        _podCard.BorderColor = AppTheme.BorderSubtle;
+        _podLabel.ForeColor = AppTheme.TextPrimary;
     }
 }

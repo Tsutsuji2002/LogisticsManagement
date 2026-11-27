@@ -19,6 +19,7 @@ using Logistics.Client.WinForms.Controls.Warehouse;
 using Logistics.Client.WinForms.Forms.Authentication;
 using Logistics.Client.WinForms.Security;
 using Logistics.Client.WinForms.Services;
+using Logistics.Client.WinForms.Themes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -50,6 +51,7 @@ internal static class Program
         try
         {
             ApplicationConfiguration.Initialize();
+            AppTheme.InitializeAntdTheme();
 
             var services = new ServiceCollection();
             ConfigureServices(services);

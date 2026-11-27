@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Notification;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -5,23 +6,25 @@ using Logistics.Client.WinForms.Controls.Common;
 using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Notifications;
 
-public sealed class NotificationsWorkspaceControl : ModuleViewBase
+public sealed class NotificationsWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly INotificationApiClient _notifApi;
     private readonly IAuthorizationService _auth;
     private readonly IBranchContextService _branchContext;
     private readonly ILogger<NotificationsWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabCenter = new("Trung tâm thông báo") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabTemplates = new("Mẫu thông báo (Templates)") { BackColor = AppTheme.SurfaceBg };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabCenter = new() { Text = "Trung tâm thông báo" };
+    private readonly AntdUI.TabPage _tabTemplates = new() { Text = "Mẫu thông báo (Templates)" };
 
     private PagedDataGridControl _notifGrid = null!;
-    private CheckBox _unreadOnlyCheck = null!;
-    private CheckBox _systemAllCheck = null!;
+    private AntdUI.Checkbox _unreadOnlyCheck = null!;
+    private AntdUI.Checkbox? _systemAllCheck;
+    private AntdUI.Panel _previewCard = null!;
     private Label _previewLabel = null!;
 
     private PagedDataGridControl _templatesGrid = null!;
@@ -42,18 +45,19 @@ public sealed class NotificationsWorkspaceControl : ModuleViewBase
         BuildCenterTab();
         BuildTemplatesTab();
 
-        if (_auth.HasPermission(ClientPermissions.Notification.NotificationsReadOwn)) _tabs.TabPages.Add(_tabCenter);
-        if (_auth.HasPermission(ClientPermissions.Notification.TemplatesRead)) _tabs.TabPages.Add(_tabTemplates);
+        if (_auth.HasPermission(ClientPermissions.Notification.NotificationsReadOwn)) _tabs.Pages.Add(_tabCenter);
+        if (_auth.HasPermission(ClientPermissions.Notification.TemplatesRead)) _tabs.Pages.Add(_tabTemplates);
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
     {
-        if (navKey == "Notifications.Templates" && _tabs.TabPages.Contains(_tabTemplates))
+        if (navKey == "Notifications.Templates" && _tabs.Pages.Contains(_tabTemplates))
             _tabs.SelectedTab = _tabTemplates;
-        else if (_tabs.TabPages.Contains(_tabCenter))
+        else if (_tabs.Pages.Contains(_tabCenter))
             _tabs.SelectedTab = _tabCenter;
     }
 
@@ -62,13 +66,13 @@ public sealed class NotificationsWorkspaceControl : ModuleViewBase
         var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 360);
         _notifGrid = new PagedDataGridControl("Thông báo (Notifications)", "Danh sách thông báo trong hệ thống (tự làm mới chu kỳ 60 giây trên thanh tiêu đề).", showSearch: false);
 
-        _unreadOnlyCheck = new CheckBox { Text = "Chỉ chưa đọc", AutoSize = true, Margin = new Padding(4, 8, 8, 0) };
+        _unreadOnlyCheck = new AntdUI.Checkbox { Text = "Chỉ chưa đọc", AutoSize = true, Margin = new Padding(4, 6, 8, 0), Font = AppTheme.BodyFont };
         _unreadOnlyCheck.CheckedChanged += (_, _) => _notifGrid.ResetAndReload();
         _notifGrid.AddFilterControl(_unreadOnlyCheck);
 
         if (_auth.HasPermission(ClientPermissions.Notification.NotificationsManage))
         {
-            _systemAllCheck = new CheckBox { Text = "Xem toàn hệ thống", AutoSize = true, Margin = new Padding(4, 8, 8, 0) };
+            _systemAllCheck = new AntdUI.Checkbox { Text = "Xem toàn hệ thống", AutoSize = true, Margin = new Padding(4, 6, 8, 0), Font = AppTheme.BodyFont };
             _systemAllCheck.CheckedChanged += (_, _) => _notifGrid.ResetAndReload();
             _notifGrid.AddFilterControl(_systemAllCheck);
 
@@ -110,9 +114,12 @@ public sealed class NotificationsWorkspaceControl : ModuleViewBase
             _previewLabel.Text = n == null ? "Chọn thông báo để xem chi tiết." : $"{n.Title}\n[{n.Channel} | {n.Priority} | {AppTheme.FormatLocalTime(n.CreatedAt)}]\n\n{n.Content}";
         };
 
-        _previewLabel = new Label { Dock = DockStyle.Fill, BackColor = AppTheme.CardBg, Padding = new Padding(16), Font = AppTheme.BodyFont };
+        _previewCard = AppTheme.CreateCardPanel(new Padding(16));
+        _previewCard.Dock = DockStyle.Fill;
+        _previewLabel = new Label { Dock = DockStyle.Fill, BackColor = Color.Transparent, Font = AppTheme.BodyFont };
+        _previewCard.Controls.Add(_previewLabel);
         split.Panel1.Controls.Add(_notifGrid);
-        split.Panel2.Controls.Add(_previewLabel);
+        split.Panel2.Controls.Add(_previewCard);
         _tabCenter.Controls.Add(split);
     }
 
@@ -243,5 +250,15 @@ public sealed class NotificationsWorkspaceControl : ModuleViewBase
             }
         });
         if (dlg.ShowDialog(this) == DialogResult.OK) await LoadTemplatesAsync();
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _unreadOnlyCheck.ForeColor = AppTheme.TextPrimary;
+        if (_systemAllCheck != null) _systemAllCheck.ForeColor = AppTheme.TextPrimary;
+        _previewCard.Back = AppTheme.CardBg;
+        _previewCard.BorderColor = AppTheme.BorderSubtle;
+        _previewLabel.ForeColor = AppTheme.TextPrimary;
     }
 }

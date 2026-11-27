@@ -6,6 +6,7 @@ public interface IModuleView
 {
     Task LoadInitialAsync();
     Task OnBranchContextChangedAsync();
+    Task RefreshViewAsync();
 }
 
 public class ModuleViewBase : UserControl, IModuleView
@@ -26,6 +27,8 @@ public class ModuleViewBase : UserControl, IModuleView
     }
 
     public virtual Task OnBranchContextChangedAsync() => RefreshDataAsync();
+
+    public virtual Task RefreshViewAsync() => RefreshDataAsync();
 
     protected virtual Task RefreshDataAsync() => Task.CompletedTask;
 }

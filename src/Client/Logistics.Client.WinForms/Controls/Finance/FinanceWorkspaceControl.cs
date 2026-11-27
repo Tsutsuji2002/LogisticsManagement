@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Finance;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -6,10 +7,11 @@ using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Logistics.Shared.Contracts.Pagination;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Finance;
 
-public sealed class FinanceWorkspaceControl : ModuleViewBase
+public sealed class FinanceWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly IFinanceApiClient _financeApi;
     private readonly ICrmApiClient _crmApi;
@@ -18,19 +20,21 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
     private readonly IBranchContextService _branchContext;
     private readonly ILogger<FinanceWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabRates = new("Bảng giá, Tính cước & Phí vận đơn") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabInvoices = new("Hóa đơn & Thanh toán") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabBalances = new("Công nợ khách hàng & Sổ cái") { BackColor = AppTheme.SurfaceBg };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabRates = new() { Text = "Bảng giá, Tính cước & Phí vận đơn" };
+    private readonly AntdUI.TabPage _tabInvoices = new() { Text = "Hóa đơn & Thanh toán" };
+    private readonly AntdUI.TabPage _tabBalances = new() { Text = "Công nợ khách hàng & Sổ cái" };
 
     private PagedDataGridControl _rateCardsGrid = null!;
-    private readonly DataGridView _rulesGrid = new() { Dock = DockStyle.Fill };
+    private AntdUI.Panel _rulesCard = null!;
+    private readonly AntdUI.Table _rulesGrid = AppTheme.CreateAntdTable();
     private PagedDataGridControl _chargesGrid = null!;
     private ShippingRateCardDto? _selectedCard;
 
     private PagedDataGridControl _invoicesGrid = null!;
-    private readonly ComboBox _invStatusFilter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130, Margin = new Padding(0, 4, 8, 0) };
-    private readonly DataGridView _invoiceItemsGrid = new() { Dock = DockStyle.Fill };
+    private readonly AntdUI.Select _invStatusFilter = new() { Width = 165, Height = 32, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 4) };
+    private AntdUI.Panel _itemsCard = null!;
+    private readonly AntdUI.Table _invoiceItemsGrid = AppTheme.CreateAntdTable();
     private PagedDataGridControl _paymentsGrid = null!;
     private InvoiceDto? _selectedInvoice;
 
@@ -57,14 +61,15 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
         BuildBalancesAndLedgerTab();
 
         if (_auth.HasAnyPermission(ClientPermissions.Finance.RatesRead, ClientPermissions.Finance.ChargesRead))
-            _tabs.TabPages.Add(_tabRates);
+            _tabs.Pages.Add(_tabRates);
         if (_auth.HasAnyPermission(ClientPermissions.Finance.InvoicesRead, ClientPermissions.Finance.PaymentsRead))
-            _tabs.TabPages.Add(_tabInvoices);
+            _tabs.Pages.Add(_tabInvoices);
         if (_auth.HasAnyPermission(ClientPermissions.Finance.BalancesRead, ClientPermissions.Finance.LedgerRead))
-            _tabs.TabPages.Add(_tabBalances);
+            _tabs.Pages.Add(_tabBalances);
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
@@ -75,7 +80,7 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
             "Finance.Balances" => _tabBalances,
             _ => _tabRates
         };
-        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
+        if (_tabs.Pages.Contains(tab)) _tabs.SelectedTab = tab;
     }
 
     private void BuildRatesAndChargesTab()
@@ -114,21 +119,21 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
             await LoadSelectedCardRulesAsync();
         };
 
-        var rulesPanel = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.CardBg, Padding = new Padding(10) };
-        var rulesTop = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38 };
-        rulesTop.Controls.Add(new Label { Text = "Quy tắc tính cước (ShippingRateRules)", Font = AppTheme.SectionTitleFont, AutoSize = true, Margin = new Padding(0, 8, 12, 0) });
+        _rulesCard = AppTheme.CreateCardPanel(new Padding(10));
+        _rulesCard.Dock = DockStyle.Fill;
+        var rulesTop = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, BackColor = Color.Transparent };
+        rulesTop.Controls.Add(new Label { Text = "Quy tắc tính cước (ShippingRateRules)", Font = AppTheme.SectionTitleFont, AutoSize = true, Margin = new Padding(0, 8, 12, 0), BackColor = Color.Transparent });
         if (_auth.HasPermission(ClientPermissions.Finance.RatesManage))
         {
             var addRuleBtn = AppTheme.CreatePrimaryButton("Thêm Rule", 105);
             addRuleBtn.Click += async (_, _) => await CreateRateRuleAsync();
             rulesTop.Controls.Add(addRuleBtn);
         }
-        AppTheme.StyleDataGrid(_rulesGrid);
-        rulesPanel.Controls.Add(_rulesGrid);
-        rulesPanel.Controls.Add(rulesTop);
+        _rulesCard.Controls.Add(_rulesGrid);
+        _rulesCard.Controls.Add(rulesTop);
 
         topSplit.Panel1.Controls.Add(_rateCardsGrid);
-        topSplit.Panel2.Controls.Add(rulesPanel);
+        topSplit.Panel2.Controls.Add(_rulesCard);
 
         _chargesGrid = new PagedDataGridControl("Phí vận đơn (ShipmentCharges)", "Server tự động kết xuất cước phí; hỗ trợ điều chỉnh phụ phí.");
         if (_auth.HasPermission(ClientPermissions.Finance.ChargesAdjust))
@@ -150,7 +155,15 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
         var invSplit = AppTheme.CreateSafeSplitContainer(Orientation.Vertical, 680);
 
         _invoicesGrid = new PagedDataGridControl("Hóa đơn khách hàng (Invoices - Server tính tổng & VAT)", "Mọi dòng tiền Subtotal / VAT / Paid / Outstanding đều do server tính.");
-        _invStatusFilter.Items.AddRange(["", "Draft", "Issued", "PartiallyPaid", "Paid", "Overdue", "Cancelled"]);
+        _invStatusFilter.Items.AddRange([
+            new SelectItem("Tất cả", ""),
+            new SelectItem("Draft", "Draft"),
+            new SelectItem("Issued", "Issued"),
+            new SelectItem("PartiallyPaid", "PartiallyPaid"),
+            new SelectItem("Paid", "Paid"),
+            new SelectItem("Overdue", "Overdue"),
+            new SelectItem("Cancelled", "Cancelled")
+        ]);
         _invStatusFilter.SelectedIndex = 0;
         _invStatusFilter.SelectedIndexChanged += (_, _) => _invoicesGrid.ResetAndReload();
         _invoicesGrid.AddFilterControl(_invStatusFilter);
@@ -184,13 +197,13 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
         _invoicesGrid.ReloadRequested += async (_, _) => await LoadInvoicesAndPaymentsAsync();
         _invoicesGrid.SelectionChanged += async (_, _) => await LoadInvoiceItemsAsync();
 
-        var itemsPanel = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.CardBg, Padding = new Padding(10) };
-        itemsPanel.Controls.Add(_invoiceItemsGrid);
-        itemsPanel.Controls.Add(new Label { Text = "Chi tiết hạng mục hóa đơn (InvoiceItems)", Dock = DockStyle.Top, Height = 30, Font = AppTheme.SectionTitleFont });
-        AppTheme.StyleDataGrid(_invoiceItemsGrid);
+        _itemsCard = AppTheme.CreateCardPanel(new Padding(10));
+        _itemsCard.Dock = DockStyle.Fill;
+        _itemsCard.Controls.Add(_invoiceItemsGrid);
+        _itemsCard.Controls.Add(new Label { Text = "Chi tiết hạng mục hóa đơn (InvoiceItems)", Dock = DockStyle.Top, Height = 30, Font = AppTheme.SectionTitleFont, BackColor = Color.Transparent });
 
         invSplit.Panel1.Controls.Add(_invoicesGrid);
-        invSplit.Panel2.Controls.Add(itemsPanel);
+        invSplit.Panel2.Controls.Add(_itemsCard);
 
         _paymentsGrid = new PagedDataGridControl("Thanh toán & Phân bổ công nợ (Payments)", "Ghi nhận thanh toán từ khách hàng và phân bổ vào từng hóa đơn.");
         if (_auth.HasPermission(ClientPermissions.Finance.PaymentsManage))
@@ -260,9 +273,9 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
 
     private async Task LoadSelectedCardRulesAsync()
     {
-        if (_selectedCard == null) { _rulesGrid.DataSource = null; return; }
+        if (_selectedCard == null) { AppTheme.BindAntdTable(_rulesGrid, Array.Empty<ShippingRateRuleDto>()); return; }
         var rules = await _financeApi.GetRateRulesAsync(_selectedCard.Id);
-        _rulesGrid.DataSource = rules.ToList();
+        AppTheme.BindAntdTable(_rulesGrid, rules);
     }
 
     private async Task LoadInvoicesAndPaymentsAsync()
@@ -271,7 +284,7 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
         {
             if (_auth.HasPermission(ClientPermissions.Finance.InvoicesRead))
             {
-                var status = _invStatusFilter.SelectedItem?.ToString();
+                var status = _invStatusFilter.SelectedValue?.ToString();
                 var invs = await _financeApi.GetInvoicesAsync(null, string.IsNullOrWhiteSpace(status) ? null : status, _invoicesGrid.CurrentPage, _invoicesGrid.CurrentPageSize);
                 _invoicesGrid.BindPagedData(invs);
                 await LoadInvoiceItemsAsync();
@@ -287,9 +300,9 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
     private async Task LoadInvoiceItemsAsync()
     {
         _selectedInvoice = _invoicesGrid.GetSelectedRow<InvoiceDto>();
-        if (_selectedInvoice == null) { _invoiceItemsGrid.DataSource = null; return; }
+        if (_selectedInvoice == null) { AppTheme.BindAntdTable(_invoiceItemsGrid, Array.Empty<InvoiceItemDto>()); return; }
         var full = await _financeApi.GetInvoiceByIdAsync(_selectedInvoice.Id);
-        _invoiceItemsGrid.DataSource = full.Items;
+        AppTheme.BindAntdTable(_invoiceItemsGrid, full.Items);
     }
 
     private async Task LoadBalancesAndLedgerAsync()
@@ -526,5 +539,14 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
                 "Kết quả đối soát công nợ");
             await LoadBalancesAndLedgerAsync();
         }, null, null, _logger);
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _rulesCard.Back = AppTheme.CardBg;
+        _rulesCard.BorderColor = AppTheme.BorderSubtle;
+        _itemsCard.Back = AppTheme.CardBg;
+        _itemsCard.BorderColor = AppTheme.BorderSubtle;
     }
 }

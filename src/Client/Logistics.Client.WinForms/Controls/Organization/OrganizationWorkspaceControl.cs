@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Auth;
 using Logistics.Client.Application.Contracts.Organization;
 using Logistics.Client.Application.Interfaces;
@@ -7,10 +8,14 @@ using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Logistics.Shared.Contracts.Pagination;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Organization;
 
-public sealed class OrganizationWorkspaceControl : ModuleViewBase
+/// <summary>
+/// AntdUI Organization, HR, User Accounts &amp; Roles/Permissions workspace.
+/// </summary>
+public sealed class OrganizationWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly IOrganizationApiClient _orgApi;
     private readonly IIdentityAdminApiClient _identityApi;
@@ -18,19 +23,24 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase
     private readonly IBranchContextService _branchContext;
     private readonly ILogger<OrganizationWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabCompany = new("Công ty & Tổng quan") { BackColor = AppTheme.SurfaceBg, Padding = new Padding(16) };
-    private readonly TabPage _tabBranches = new("Chi nhánh") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabDepts = new("Phòng ban") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabEmployees = new("Nhân viên") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabUsers = new("Tài khoản & Vai trò") { BackColor = AppTheme.SurfaceBg };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabCompany = new() { Text = "Công ty & Tổng quan" };
+    private readonly AntdUI.TabPage _tabBranches = new() { Text = "Chi nhánh" };
+    private readonly AntdUI.TabPage _tabDepts = new() { Text = "Phòng ban" };
+    private readonly AntdUI.TabPage _tabEmployees = new() { Text = "Nhân viên" };
+    private readonly AntdUI.TabPage _tabUsers = new() { Text = "Tài khoản người dùng" };
+    private readonly AntdUI.TabPage _tabRoles = new() { Text = "Vai trò & Phân quyền" };
 
+    private AntdUI.Panel _companyCard = null!;
+    private Label _companyTitleLabel = null!;
     private Label _companyInfoLabel = null!;
-    private Button? _editCompanyBtn;
+    private AntdUI.Button _editCompanyBtn = null!;
     private PagedDataGridControl _branchesGrid = null!;
     private PagedDataGridControl _deptsGrid = null!;
     private PagedDataGridControl _employeesGrid = null!;
     private PagedDataGridControl _usersGrid = null!;
+    private AntdUI.Table _rolesTable = null!;
+    private AntdUI.Table _permissionsTable = null!;
 
     public OrganizationWorkspaceControl(
         IOrganizationApiClient orgApi,
@@ -50,52 +60,77 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase
         BuildDeptsTab();
         BuildEmployeesTab();
         BuildUsersTab();
+        BuildRolesTab();
 
-        if (_auth.HasPermission(ClientPermissions.Organization.CompanyRead)) _tabs.TabPages.Add(_tabCompany);
-        if (_auth.HasPermission(ClientPermissions.Organization.BranchesRead)) _tabs.TabPages.Add(_tabBranches);
-        if (_auth.HasPermission(ClientPermissions.Organization.DepartmentsRead)) _tabs.TabPages.Add(_tabDepts);
-        if (_auth.HasPermission(ClientPermissions.Employees.Read)) _tabs.TabPages.Add(_tabEmployees);
-        if (_auth.HasAnyPermission(ClientPermissions.Identity.UsersRead, ClientPermissions.Identity.RolesRead)) _tabs.TabPages.Add(_tabUsers);
+        if (_auth.HasPermission(ClientPermissions.Organization.CompanyRead)) _tabs.Pages.Add(_tabCompany);
+        if (_auth.HasPermission(ClientPermissions.Organization.BranchesRead)) _tabs.Pages.Add(_tabBranches);
+        if (_auth.HasPermission(ClientPermissions.Organization.DepartmentsRead)) _tabs.Pages.Add(_tabDepts);
+        if (_auth.HasPermission(ClientPermissions.Employees.Read)) _tabs.Pages.Add(_tabEmployees);
+        if (_auth.HasPermission(ClientPermissions.Identity.UsersRead)) _tabs.Pages.Add(_tabUsers);
+        if (_auth.HasPermission(ClientPermissions.Identity.RolesRead)) _tabs.Pages.Add(_tabRoles);
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshActiveTabAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
     {
-        var target = navKey switch
+        var tab = navKey switch
         {
+            "Org.Company" => _tabCompany,
             "Org.Branches" => _tabBranches,
             "Org.Departments" => _tabDepts,
             "Org.Employees" => _tabEmployees,
             "Org.Users" => _tabUsers,
+            "Org.Roles" => _tabRoles,
             _ => _tabCompany
         };
-        if (_tabs.TabPages.Contains(target)) _tabs.SelectedTab = target;
+        if (_tabs.Pages.Contains(tab))
+            _tabs.SelectedTab = tab;
     }
 
     private void BuildCompanyTab()
     {
-        var card = new Panel { Dock = DockStyle.Top, Height = 260, BackColor = AppTheme.CardBg, Padding = new Padding(20) };
-        _companyInfoLabel = new Label { Dock = DockStyle.Fill, Font = AppTheme.BodyFont, ForeColor = AppTheme.TextPrimary };
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44 };
-        if (_auth.HasPermission(ClientPermissions.Organization.CompanyUpdate))
+        _tabCompany.Padding = new Padding(4);
+        _companyCard = AppTheme.CreateCardPanel(new Padding(22));
+        _companyCard.Dock = DockStyle.Fill;
+
+        _companyTitleLabel = new Label
         {
-            _editCompanyBtn = AppTheme.CreatePrimaryButton("Chỉnh sửa thông tin công ty", 210);
-            _editCompanyBtn.Click += async (_, _) => await EditCompanyAsync();
-            bar.Controls.Add(_editCompanyBtn);
-        }
-        var refreshBtn = AppTheme.CreateSecondaryButton("Làm mới", 100);
+            Text = "Hồ sơ Doanh nghiệp & Tổng quan Cơ cấu",
+            Font = AppTheme.PageTitleFont,
+            Dock = DockStyle.Top,
+            Height = 38,
+            BackColor = Color.Transparent
+        };
+        _companyInfoLabel = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 200,
+            Font = AppTheme.BodyFont,
+            Padding = new Padding(0, 12, 0, 12),
+            BackColor = Color.Transparent
+        };
+
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, BackColor = Color.Transparent };
+        _editCompanyBtn = AppTheme.CreatePrimaryButton("Sửa thông tin công ty", 180);
+        _editCompanyBtn.Enabled = _auth.HasPermission(ClientPermissions.Organization.CompanyUpdate);
+        _editCompanyBtn.Click += async (_, _) => await EditCompanyAsync();
+
+        var refreshBtn = AppTheme.CreateSecondaryButton("Tải lại", 105);
         refreshBtn.Click += async (_, _) => await LoadCompanyAsync();
-        bar.Controls.Add(refreshBtn);
-        card.Controls.Add(_companyInfoLabel);
-        card.Controls.Add(bar);
-        _tabCompany.Controls.Add(card);
+
+        bar.Controls.AddRange([_editCompanyBtn, refreshBtn]);
+        _companyCard.Controls.Add(bar);
+        _companyCard.Controls.Add(_companyInfoLabel);
+        _companyCard.Controls.Add(_companyTitleLabel);
+        _tabCompany.Controls.Add(_companyCard);
     }
 
     private void BuildBranchesTab()
     {
-        _branchesGrid = new PagedDataGridControl("Chi nhánh vận hành", "Quản lý danh sách chi nhánh thuộc công ty.");
+        _branchesGrid = new PagedDataGridControl("Chi nhánh vận hành", "Quản lý danh sách chi nhánh, loại hình và trạng thái hoạt động.");
         if (_auth.HasPermission(ClientPermissions.Organization.BranchesCreate))
         {
             var addBtn = AppTheme.CreatePrimaryButton("Thêm chi nhánh", 140);
@@ -259,7 +294,7 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase
         if (_auth.HasPermission(ClientPermissions.Identity.UsersResetPassword))
         {
             var pwdBtn = AppTheme.CreateDangerButton("Đặt lại MK", 110);
-            pwdBtn.Click += async (_, _) => await ResetUserPasswordAsync();
+            pwdBtn.Click += (_, _) => ResetUserPassword();
             _usersGrid.AddActionButton(pwdBtn);
         }
         if (_auth.HasPermission(ClientPermissions.Identity.UsersUpdate))
@@ -281,6 +316,33 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase
         _tabUsers.Controls.Add(_usersGrid);
     }
 
+    private void BuildRolesTab()
+    {
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Vertical, 520, 260, 320);
+
+        var rolesCard = AppTheme.CreateCardPanel(new Padding(12));
+        rolesCard.Dock = DockStyle.Fill;
+        var rolesHdr = new AntPageHeaderControl("Vai trò hệ thống (Roles)", "Danh sách Role RBAC");
+        var refreshBtn = AppTheme.CreateSecondaryButton("Tải lại", 92);
+        refreshBtn.Click += async (_, _) => await LoadRolesAndPermissionsAsync();
+        rolesHdr.AddAction(refreshBtn);
+
+        _rolesTable = AppTheme.CreateAntdTable();
+        rolesCard.Controls.Add(_rolesTable);
+        rolesCard.Controls.Add(rolesHdr);
+
+        var permCard = AppTheme.CreateCardPanel(new Padding(12));
+        permCard.Dock = DockStyle.Fill;
+        var permHdr = new AntPageHeaderControl("Danh mục quyền hạn (Permissions)", "Mã quyền RBAC chuẩn Backend");
+        _permissionsTable = AppTheme.CreateAntdTable();
+        permCard.Controls.Add(_permissionsTable);
+        permCard.Controls.Add(permHdr);
+
+        split.Panel1.Controls.Add(rolesCard);
+        split.Panel2.Controls.Add(permCard);
+        _tabRoles.Controls.Add(split);
+    }
+
     protected override async Task RefreshDataAsync() => await RefreshActiveTabAsync();
 
     private async Task RefreshActiveTabAsync()
@@ -290,6 +352,7 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase
         else if (_tabs.SelectedTab == _tabDepts) await LoadDeptsAsync();
         else if (_tabs.SelectedTab == _tabEmployees) await LoadEmployeesAsync();
         else if (_tabs.SelectedTab == _tabUsers) await LoadUsersAsync();
+        else if (_tabs.SelectedTab == _tabRoles) await LoadRolesAndPermissionsAsync();
     }
 
     private async Task LoadCompanyAsync()
@@ -459,6 +522,18 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase
         _usersGrid.SetLoading(false);
     }
 
+    private async Task LoadRolesAndPermissionsAsync()
+    {
+        if (!_auth.HasPermission(ClientPermissions.Identity.RolesRead)) return;
+        await UiAsyncRunner.RunSafeAsync(this, async () =>
+        {
+            var roles = await _identityApi.GetRolesAsync();
+            var perms = await _identityApi.GetPermissionsAsync();
+            AppTheme.BindAntdTable(_rolesTable, roles);
+            AppTheme.BindAntdTable(_permissionsTable, perms);
+        }, logger: _logger, showMessageBoxOnError: false);
+    }
+
     private async Task CreateUserAsync()
     {
         var roles = await _identityApi.GetRolesAsync();
@@ -505,7 +580,7 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase
         if (dlg.ShowDialog(this) == DialogResult.OK) await LoadUsersAsync();
     }
 
-    private async Task ResetUserPasswordAsync()
+    private void ResetUserPassword()
     {
         var u = _usersGrid.GetSelectedRow<UserAccountDto>();
         if (u == null) return;
@@ -513,5 +588,14 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase
             new ModalFieldSpec { Key = "NewPassword", Label = "Mật khẩu mới", Kind = ModalFieldKind.Password, Required = true }
         ], async v => await _identityApi.ResetUserPasswordAsync(u.PublicId, new AdminResetPasswordRequest(v["NewPassword"]!.ToString()!)));
         if (dlg.ShowDialog(this) == DialogResult.OK) UiAsyncRunner.ShowInfo(this, "Đã đặt lại mật khẩu người dùng.");
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _companyCard.Back = AppTheme.CardBg;
+        _companyCard.BorderColor = AppTheme.BorderSubtle;
+        _companyTitleLabel.ForeColor = AppTheme.TextPrimary;
+        _companyInfoLabel.ForeColor = AppTheme.TextSecondary;
     }
 }

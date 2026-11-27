@@ -1,216 +1,253 @@
+using System.Collections;
+using AntdUI;
 using Logistics.Client.Application.Localization;
 using Logistics.Client.WinForms.Themes;
 using Logistics.Shared.Contracts.Pagination;
+using Label = System.Windows.Forms.Label;
+using Timer = System.Windows.Forms.Timer;
 
 namespace Logistics.Client.WinForms.Controls.Common;
 
 /// <summary>
-/// Reusable enterprise server-paged DataGridView workspace with search, filter/action toolbars,
-/// loading/empty/error states, and full pagination controls.
+/// Enterprise AntdUI Table container with header toolbar, debounced AntdUI.Input search,
+/// custom filter slot, AntdUI.Alert state banner, auto-sized AntdUI.Table, and AntdUI.Pagination.
 /// </summary>
-public class PagedDataGridControl : UserControl
+public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
 {
-    private readonly Panel _headerCard;
     private readonly Label _titleLabel;
-    private readonly Label _descLabel;
-    private readonly FlowLayoutPanel _actionsToolbar;
+    private readonly Label _subtitleLabel;
+    private readonly AntdUI.Input _searchInput;
+    private readonly AntdUI.Button _refreshButton;
+    private readonly FlowLayoutPanel _actionsPanel;
     private readonly FlowLayoutPanel _filterPanel;
-    private readonly TextBox _searchBox;
-    private readonly Button _searchButton;
-    private readonly Button _refreshButton;
-    private readonly Panel _statusBanner;
-    private readonly Label _statusBannerLabel;
-    private readonly DataGridView _grid;
-    private readonly Panel _pagerPanel;
-    private readonly Button _btnFirst;
-    private readonly Button _btnPrev;
-    private readonly Label _pageInfoLabel;
-    private readonly Button _btnNext;
-    private readonly Button _btnLast;
-    private readonly ComboBox _pageSizeBox;
+    private readonly AntdUI.Table _table;
+    private readonly AntdUI.Alert _bannerAlert;
+    private readonly AntdUI.Pagination _pagination;
+    private readonly Label _pageSummaryLabel;
+    private readonly System.Windows.Forms.Panel _toolbarSeparator;
+    private readonly System.Windows.Forms.Panel _footerPanel;
+    private readonly Timer _searchDebounce;
 
+    private IList _currentItems = Array.Empty<object>();
+    private Type _currentItemType = typeof(object);
     private int _currentPage = 1;
-    private int _totalPages = 1;
     private int _pageSize = 20;
+    private int _totalCount;
+    private bool _suppressPageEvents;
 
-    public PagedDataGridControl(string title, string description, bool showSearch = true, bool showPagination = true)
+    public PagedDataGridControl(string title, string? subtitle = null, bool showSearch = true, bool showPagination = true)
     {
         Dock = DockStyle.Fill;
-        BackColor = AppTheme.SurfaceBg;
-        Padding = new Padding(16);
+        Radius = 8;
+        BorderWidth = 1F;
+        Padding = new Padding(0);
+        Margin = new Padding(0);
 
-        // Top Title + Action Bar
-        _headerCard = new Panel
+        // Top Header + Primary Actions Bar
+        var headerPanel = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Top,
-            Height = 76,
-            BackColor = AppTheme.CardBg,
-            Padding = new Padding(16, 12, 16, 10)
+            Height = 60,
+            Padding = new Padding(16, 10, 16, 8),
+            BackColor = Color.Transparent
         };
-        _headerCard.Paint += (_, e) =>
+
+        var titleStack = new FlowLayoutPanel
         {
-            using var p = new Pen(AppTheme.BorderSubtle);
-            e.Graphics.DrawRectangle(p, 0, 0, _headerCard.Width - 1, _headerCard.Height - 1);
+            Dock = DockStyle.Left,
+            AutoSize = true,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            BackColor = Color.Transparent
         };
 
         _titleLabel = new Label
         {
             Text = title,
-            Font = AppTheme.PageTitleFont,
-            ForeColor = AppTheme.NavyDark,
+            Font = AppTheme.SectionTitleFont,
             AutoSize = true,
-            Location = new Point(16, 12)
+            BackColor = Color.Transparent,
+            Margin = new Padding(0)
         };
-        _descLabel = new Label
+        _subtitleLabel = new Label
         {
-            Text = description,
+            Text = subtitle ?? string.Empty,
             Font = AppTheme.SmallFont,
-            ForeColor = AppTheme.TextMuted,
             AutoSize = true,
-            Location = new Point(18, 42)
+            Visible = !string.IsNullOrWhiteSpace(subtitle),
+            BackColor = Color.Transparent,
+            Margin = new Padding(0, 2, 0, 0)
         };
-        _actionsToolbar = new FlowLayoutPanel
+        titleStack.Controls.Add(_titleLabel);
+        titleStack.Controls.Add(_subtitleLabel);
+
+        _actionsPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Right,
             AutoSize = true,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
-            Padding = new Padding(0, 8, 0, 0)
+            Padding = new Padding(0, 4, 0, 0),
+            BackColor = Color.Transparent
         };
 
-        _headerCard.Controls.Add(_actionsToolbar);
-        _headerCard.Controls.Add(_titleLabel);
-        _headerCard.Controls.Add(_descLabel);
+        _refreshButton = AppTheme.CreateSecondaryButton(AppStrings.T("Refresh"), 102);
+        _refreshButton.Click += (_, _) => RaiseReload();
+        _actionsPanel.Controls.Add(_refreshButton);
 
-        // Filter Bar
+        headerPanel.Controls.Add(titleStack);
+        headerPanel.Controls.Add(_actionsPanel);
+
+        // Filter & Search Toolbar
         _filterPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            MinimumSize = new Size(0, 48),
-            BackColor = AppTheme.CardBg,
-            Padding = new Padding(12, 8, 12, 6),
-            Margin = new Padding(0, 8, 0, 8)
+            MinimumSize = new Size(0, 46),
+            Padding = new Padding(16, 6, 16, 8),
+            WrapContents = true,
+            Visible = showSearch,
+            BackColor = Color.Transparent
         };
 
-        _searchBox = new TextBox
+        _searchInput = new AntdUI.Input
         {
-            Width = 240,
+            Width = 280,
+            Height = 32,
+            Radius = 6,
+            AllowClear = true,
+            PlaceholderText = "Tìm kiếm theo từ khóa...",
             Font = AppTheme.BodyFont,
-            PlaceholderText = AppStrings.T("Search") + "...",
-            Visible = showSearch,
-            Margin = new Padding(0, 4, 8, 4)
+            Margin = new Padding(0, 0, 8, 4)
         };
-        _searchBox.KeyDown += (_, e) =>
+        _searchDebounce = new Timer { Interval = 320 };
+        _searchDebounce.Tick += (_, _) =>
+        {
+            _searchDebounce.Stop();
+            _currentPage = 1;
+            RaiseReload();
+        };
+        _searchInput.TextChanged += (_, _) =>
+        {
+            _searchDebounce.Stop();
+            _searchDebounce.Start();
+        };
+        _searchInput.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Enter)
             {
-                e.SuppressKeyPress = true;
-                ResetAndReload();
+                _searchDebounce.Stop();
+                _currentPage = 1;
+                RaiseReload();
+                e.Handled = true;
             }
         };
 
-        _searchButton = AppTheme.CreateSecondaryButton(AppStrings.T("Filter"), 88);
-        _searchButton.Visible = showSearch;
-        _searchButton.Click += (_, _) => ResetAndReload();
+        var searchBtn = AppTheme.CreatePrimaryButton(AppStrings.T("Search"), 96);
+        searchBtn.Height = 32;
+        searchBtn.MinimumSize = new Size(92, 32);
+        searchBtn.Click += (_, _) =>
+        {
+            _searchDebounce.Stop();
+            _currentPage = 1;
+            RaiseReload();
+        };
 
-        _refreshButton = AppTheme.CreateSecondaryButton(AppStrings.T("Refresh"), 96);
-        _refreshButton.Click += (_, _) => ReloadRequested?.Invoke(this, EventArgs.Empty);
+        _filterPanel.Controls.Add(_searchInput);
+        _filterPanel.Controls.Add(searchBtn);
 
-        _filterPanel.Controls.Add(_searchBox);
-        _filterPanel.Controls.Add(_searchButton);
-        _filterPanel.Controls.Add(_refreshButton);
-
-        // Status / Loading / Empty / Error Banner
-        _statusBanner = new Panel
+        _toolbarSeparator = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Top,
-            Height = 36,
+            Height = 1
+        };
+
+        // Alert state banner (loading / empty / error)
+        _bannerAlert = new AntdUI.Alert
+        {
+            Dock = DockStyle.Top,
+            Height = 38,
             Visible = false,
-            Padding = new Padding(12, 8, 12, 8)
-        };
-        _statusBannerLabel = new Label
-        {
-            Dock = DockStyle.Fill,
-            Font = AppTheme.BodyBoldFont,
-            TextAlign = ContentAlignment.MiddleLeft
-        };
-        _statusBanner.Controls.Add(_statusBannerLabel);
-
-        // Data Grid
-        _grid = new DataGridView { Dock = DockStyle.Fill };
-        AppTheme.StyleDataGrid(_grid);
-        _grid.SelectionChanged += (_, _) => SelectionChanged?.Invoke(this, EventArgs.Empty);
-        _grid.CellDoubleClick += (_, e) =>
-        {
-            if (e.RowIndex >= 0) RowDoubleClicked?.Invoke(this, EventArgs.Empty);
+            Radius = 0,
+            BorderWidth = 0F,
+            Icon = TType.Info,
+            Font = AppTheme.BodyFont,
+            Text = string.Empty
         };
 
-        // Footer Pager
-        _pagerPanel = new Panel
+        // Main AntdUI Table
+        _table = AppTheme.CreateAntdTable();
+        _table.SizeChanged += (_, _) =>
+        {
+            if (_currentItems.Count > 0 || _table.Columns.Count > 0)
+                AppTheme.BindAntdTable(_table, _currentItemType, _currentItems);
+        };
+        _table.SelectIndexChanged += (_, e) => SelectionChanged?.Invoke(this, e);
+        _table.CellClick += (_, e) => SelectionChanged?.Invoke(this, e);
+        _table.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex > 0)
+                RowDoubleClicked?.Invoke(this, e);
+        };
+
+        // Pagination Footer
+        _footerPanel = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 44,
-            BackColor = AppTheme.CardBg,
+            Height = 46,
             Visible = showPagination,
-            Padding = new Padding(12, 5, 12, 5)
-        };
-        _btnFirst = AppTheme.CreateSecondaryButton("<<", 48);
-        _btnPrev = AppTheme.CreateSecondaryButton("<", 48);
-        _btnNext = AppTheme.CreateSecondaryButton(">", 48);
-        _btnLast = AppTheme.CreateSecondaryButton(">>", 48);
-        _pageInfoLabel = new Label
-        {
-            Text = "Trang 1 / 1 (0 bản ghi)",
-            Font = AppTheme.BodyFont,
-            ForeColor = AppTheme.TextSecondary,
-            AutoSize = true,
-            Padding = new Padding(8, 8, 8, 0)
-        };
-        _pageSizeBox = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 76,
-            Font = AppTheme.BodyFont,
-            Margin = new Padding(8, 4, 0, 0)
-        };
-        _pageSizeBox.Items.AddRange([10, 20, 50, 100]);
-        _pageSizeBox.SelectedItem = 20;
-        _pageSizeBox.SelectedIndexChanged += (_, _) =>
-        {
-            if (_pageSizeBox.SelectedItem is int size)
-            {
-                _pageSize = size;
-                ResetAndReload();
-            }
+            Padding = new Padding(16, 6, 16, 6)
         };
 
-        var pagerFlow = new FlowLayoutPanel
+        _pageSummaryLabel = new Label
         {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false
+            Dock = DockStyle.Left,
+            AutoSize = false,
+            Width = 260,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = AppTheme.SmallFont,
+            Text = "0 bản ghi"
         };
-        pagerFlow.Controls.AddRange([_btnFirst, _btnPrev, _pageInfoLabel, _btnNext, _btnLast, _pageSizeBox]);
-        _pagerPanel.Controls.Add(pagerFlow);
 
-        _btnFirst.Click += (_, _) => GoToPage(1);
-        _btnPrev.Click += (_, _) => GoToPage(_currentPage - 1);
-        _btnNext.Click += (_, _) => GoToPage(_currentPage + 1);
-        _btnLast.Click += (_, _) => GoToPage(_totalPages);
+        _pagination = new AntdUI.Pagination
+        {
+            Dock = DockStyle.Right,
+            Width = 480,
+            Current = 1,
+            PageSize = 20,
+            Total = 0,
+            ShowSizeChanger = true,
+            PageSizeOptions = [10, 20, 50, 100],
+            SizeChangerWidth = 84,
+            Radius = 6,
+            Font = AppTheme.SmallFont,
+            RecordsPerPageText = "/ trang"
+        };
+        _pagination.ValueChanged += (_, e) =>
+        {
+            if (_suppressPageEvents) return;
+            _currentPage = Math.Max(1, e.Current);
+            _pageSize = Math.Max(10, e.PageSize);
+            RaiseReload();
+        };
+
+        _footerPanel.Controls.Add(_pagination);
+        _footerPanel.Controls.Add(_pageSummaryLabel);
 
         // Docking order
-        Controls.Add(_grid);
-        Controls.Add(_statusBanner);
-        Controls.Add(_pagerPanel);
+        Controls.Add(_table);
+        Controls.Add(_bannerAlert);
+        Controls.Add(_toolbarSeparator);
         Controls.Add(_filterPanel);
-        Controls.Add(_headerCard);
+        Controls.Add(headerPanel);
+        Controls.Add(_footerPanel);
+
+        ApplyTheme();
     }
 
-    public DataGridView Grid => _grid;
-    public FlowLayoutPanel ActionsToolbar => _actionsToolbar;
-    public FlowLayoutPanel FilterPanel => _filterPanel;
-    public string SearchText => _searchBox.Text.Trim();
+    public AntdUI.Table Table => _table;
+    public int RowCount => _currentItems.Count;
+    public string SearchText => _searchInput.Text.Trim();
     public int CurrentPage => _currentPage;
     public int CurrentPageSize => _pageSize;
 
@@ -218,102 +255,148 @@ public class PagedDataGridControl : UserControl
     public event EventHandler? SelectionChanged;
     public event EventHandler? RowDoubleClicked;
 
-    public T? GetSelectedRow<T>() where T : class
-        => _grid.SelectedRows.Count > 0 ? _grid.SelectedRows[0].DataBoundItem as T : null;
-
-    public void AddActionButton(Button btn)
+    public void AddActionButton(Control button)
     {
-        _actionsToolbar.Controls.Add(btn);
+        _actionsPanel.Controls.Add(button);
     }
 
-    public void AddFilterControl(Control ctrl)
+    public void AddFilterControl(Control filterControl)
     {
-        // Insert custom filters before Refresh button
-        _filterPanel.Controls.Add(ctrl);
-        _filterPanel.Controls.SetChildIndex(ctrl, Math.Max(0, _filterPanel.Controls.Count - 2));
+        _filterPanel.Controls.Add(filterControl);
     }
 
-    public void ResetAndReload()
+    public void SetLoading(bool loading, string? message = null)
     {
-        _currentPage = 1;
-        ReloadRequested?.Invoke(this, EventArgs.Empty);
-    }
+        _refreshButton.Loading = loading;
+        _refreshButton.Enabled = !loading;
 
-    public void SetLoading(bool isLoading)
-    {
-        if (isLoading)
+        if (loading)
         {
-            _statusBanner.BackColor = Color.FromArgb(239, 246, 255);
-            _statusBannerLabel.ForeColor = AppTheme.PrimaryBlue;
-            _statusBannerLabel.Text = AppStrings.T("Loading");
-            _statusBanner.Visible = true;
+            _bannerAlert.Text = message ?? "Đang tải dữ liệu từ API...";
+            _bannerAlert.Icon = TType.Info;
+            _bannerAlert.Visible = true;
         }
-        else if (_statusBannerLabel.Text == AppStrings.T("Loading"))
+        else if (_bannerAlert.Icon == TType.Info && _currentItems.Count > 0)
         {
-            _statusBanner.Visible = false;
+            _bannerAlert.Visible = false;
         }
     }
 
     public void SetError(string message)
     {
-        _statusBanner.BackColor = Color.FromArgb(254, 242, 242);
-        _statusBannerLabel.ForeColor = AppTheme.DangerRed;
-        _statusBannerLabel.Text = message;
-        _statusBanner.Visible = true;
+        _bannerAlert.Text = message;
+        _bannerAlert.Icon = TType.Error;
+        _bannerAlert.Visible = true;
     }
 
-    public void BindPagedData<T>(PagedResponse<T> paged)
+    public void BindPagedData<T>(PagedResponse<T> result)
     {
-        _currentPage = Math.Max(1, paged.Page);
-        _totalPages = Math.Max(1, paged.TotalPages);
+        _currentItemType = typeof(T);
+        _currentItems = result.Items.ToList();
+        _currentPage = Math.Max(1, result.Page);
+        _pageSize = Math.Max(10, result.PageSize);
+        _totalCount = Math.Max(0, result.TotalCount);
 
-        _grid.DataSource = null;
-        _grid.DataSource = paged.Items.ToList();
-        AppTheme.ConfigureGridColumns(_grid);
+        AppTheme.BindAntdTable(_table, result.Items);
 
-        _btnFirst.Enabled = paged.HasPreviousPage;
-        _btnPrev.Enabled = paged.HasPreviousPage;
-        _btnNext.Enabled = paged.HasNextPage;
-        _btnLast.Enabled = paged.HasNextPage;
-        _pageInfoLabel.Text = $"Trang {paged.Page} / {Math.Max(1, paged.TotalPages)} ({paged.TotalCount:N0} bản ghi)";
-
-        if (paged.Items.Count == 0)
+        if (result.Items.Count == 0)
         {
-            _statusBanner.BackColor = AppTheme.RowAltBg;
-            _statusBannerLabel.ForeColor = AppTheme.TextMuted;
-            _statusBannerLabel.Text = AppStrings.T("EmptyData");
-            _statusBanner.Visible = true;
+            _bannerAlert.Text = "Không có dữ liệu phù hợp với bộ lọc hiện tại.";
+            _bannerAlert.Icon = TType.Warn;
+            _bannerAlert.Visible = true;
         }
         else
         {
-            _statusBanner.Visible = false;
+            _bannerAlert.Visible = false;
         }
+
+        UpdatePaginationState();
     }
 
-    public void BindListData<T>(IReadOnlyList<T> items)
+    public void BindListData<T>(IReadOnlyList<T> items) => BindList(items);
+
+    public void BindList<T>(IReadOnlyList<T> items)
     {
-        _grid.DataSource = null;
-        _grid.DataSource = items.ToList();
-        AppTheme.ConfigureGridColumns(_grid);
-        _pageInfoLabel.Text = $"{items.Count:N0} bản ghi";
+        _currentItemType = typeof(T);
+        _currentItems = items.ToList();
+        _currentPage = 1;
+        _totalCount = items.Count;
+
+        AppTheme.BindAntdTable(_table, items);
+        _bannerAlert.Visible = items.Count == 0;
         if (items.Count == 0)
         {
-            _statusBanner.BackColor = AppTheme.RowAltBg;
-            _statusBannerLabel.ForeColor = AppTheme.TextMuted;
-            _statusBannerLabel.Text = AppStrings.T("EmptyData");
-            _statusBanner.Visible = true;
+            _bannerAlert.Text = "Không có dữ liệu.";
+            _bannerAlert.Icon = TType.Warn;
         }
-        else
-        {
-            _statusBanner.Visible = false;
-        }
+
+        UpdatePaginationState();
     }
 
-    private void GoToPage(int target)
+    public T? GetSelectedRow<T>() where T : class
+        => AppTheme.GetSelectedAntdRow<T>(_table);
+
+    public void SelectFirstRow()
     {
-        var clamped = Math.Clamp(target, 1, Math.Max(1, _totalPages));
-        if (clamped == _currentPage) return;
-        _currentPage = clamped;
-        ReloadRequested?.Invoke(this, EventArgs.Empty);
+        if (_currentItems.Count > 0)
+            _table.SelectedIndex = 1;
+    }
+
+    public void ResetPageToFirst() => _currentPage = 1;
+
+    public void ResetAndReload()
+    {
+        _currentPage = 1;
+        RaiseReload();
+    }
+
+    private void UpdatePaginationState()
+    {
+        var totalPages = Math.Max(1, (int)Math.Ceiling(_totalCount / (double)_pageSize));
+        _currentPage = Math.Clamp(_currentPage, 1, totalPages);
+
+        _suppressPageEvents = true;
+        try
+        {
+            _pagination.Total = _totalCount;
+            _pagination.PageSize = _pageSize;
+            _pagination.Current = _currentPage;
+        }
+        finally
+        {
+            _suppressPageEvents = false;
+        }
+
+        _pageSummaryLabel.Text = $"Tổng: {_totalCount:N0} bản ghi • Trang {_currentPage}/{totalPages}";
+    }
+
+    private void RaiseReload() => ReloadRequested?.Invoke(this, EventArgs.Empty);
+
+    public void ApplyTheme()
+    {
+        Back = AppTheme.CardBg;
+        BorderColor = AppTheme.BorderSubtle;
+        ForeColor = AppTheme.TextPrimary;
+
+        _titleLabel.ForeColor = AppTheme.TextPrimary;
+        _subtitleLabel.ForeColor = AppTheme.TextSecondary;
+        _toolbarSeparator.BackColor = AppTheme.BorderSubtle;
+        _footerPanel.BackColor = AppTheme.RowAltBg;
+        _pageSummaryLabel.ForeColor = AppTheme.TextSecondary;
+
+        _table.Back = AppTheme.CardBg;
+        _table.ForeColor = AppTheme.TextPrimary;
+        _table.BorderColor = AppTheme.BorderSubtle;
+        _table.ColumnBack = AppTheme.RowAltBg;
+        _table.ColumnFore = AppTheme.TextSecondary;
+        _table.Invalidate();
+        Invalidate();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _searchDebounce.Dispose();
+        base.Dispose(disposing);
     }
 }

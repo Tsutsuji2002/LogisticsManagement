@@ -1,294 +1,492 @@
+using AntdUI;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Localization;
 using Logistics.Client.WinForms.Controls.Common;
+using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
+using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Forms.Authentication;
 
-public sealed class LoginForm : Form
+/// <summary>
+/// AntdUI Login form supporting credentials sign-in, quick API environment settings,
+/// live health connectivity check, Light/Dark theme switching, and DPAPI username recall.
+/// </summary>
+public sealed class LoginForm : AntdUI.Window, IThemeAware
 {
     private readonly IAuthenticationService _authService;
     private readonly ISecureTokenStore _tokenStore;
     private readonly IClientSettingsService _settingsService;
-    private readonly IHealthApiClient _healthClient;
+    private readonly IHealthApiClient _healthApi;
+    private readonly ILogger<LoginForm> _logger;
 
-    private readonly TextBox _usernameBox;
-    private readonly TextBox _passwordBox;
-    private readonly CheckBox _showPasswordCheck;
-    private readonly CheckBox _rememberUsernameCheck;
-    private readonly Button _loginBtn;
-    private readonly Button _settingsBtn;
-    private readonly Button _testConnBtn;
-    private readonly Label _errorLabel;
-    private readonly Label _envLabel;
-    private readonly ProgressBar _progressBar;
+    private readonly AntdUI.PageHeader _windowBar;
+    private readonly System.Windows.Forms.Panel _heroPanel;
+    private readonly System.Windows.Forms.Panel _formHost;
+    private readonly AntdUI.Panel _loginCard;
+    private readonly AntdUI.Input _usernameInput;
+    private readonly AntdUI.Input _passwordInput;
+    private readonly AntdUI.Checkbox _showPasswordCheck;
+    private readonly AntdUI.Checkbox _rememberCheck;
+    private readonly AntdUI.Button _signInBtn;
+    private readonly AntdUI.Button _testApiBtn;
+    private readonly AntdUI.Button _settingsBtn;
+    private readonly AntdUI.Button _themeBtn;
+    private readonly AntdUI.Alert _statusAlert;
+    private readonly Label _welcomeTitle;
+    private readonly Label _welcomeSub;
+    private readonly Label _userLabel;
+    private readonly Label _passLabel;
+    private readonly Label _apiFootLabel;
 
     public LoginForm(
         IAuthenticationService authService,
         ISecureTokenStore tokenStore,
         IClientSettingsService settingsService,
-        IHealthApiClient healthClient)
+        IHealthApiClient healthApi,
+        ILogger<LoginForm> logger)
     {
         _authService = authService;
         _tokenStore = tokenStore;
         _settingsService = settingsService;
-        _healthClient = healthClient;
+        _healthApi = healthApi;
+        _logger = logger;
 
-        Text = $"{AppStrings.T("LoginTitle")} - Logistics Management";
+        Text = "Logistics ERP — Đăng nhập hệ thống";
+        Size = new Size(940, 580);
+        MinimumSize = new Size(820, 520);
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(460, 500);
-        Size = new Size(480, 540);
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        FormBorderStyle = FormBorderStyle.None;
+        Resizable = false;
         MaximizeBox = false;
-        BackColor = AppTheme.SurfaceBg;
-        Font = AppTheme.BodyFont;
+        Mode = AppTheme.IsDark ? TAMode.Dark : TAMode.Light;
 
-        var card = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = AppTheme.CardBg,
-            Padding = new Padding(32, 24, 32, 20)
-        };
-
-        var header = new Panel
+        _windowBar = new AntdUI.PageHeader
         {
             Dock = DockStyle.Top,
-            Height = 76,
-            BackColor = AppTheme.NavyDark
+            Height = 44,
+            Text = "Logistics Management Desktop",
+            SubText = "Enterprise TMS • WMS • Finance • COD",
+            Font = AppTheme.BodyBoldFont,
+            DragMove = true,
+            ShowButton = true,
+            MaximizeBox = false,
+            MinimizeBox = true,
+            CancelButton = true,
+            DividerShow = true,
+            DividerThickness = 1F
         };
-        var titleLbl = new Label
-        {
-            Text = AppStrings.T("AppTitle"),
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI", 13F, FontStyle.Bold),
-            AutoSize = true,
-            Location = new Point(28, 16)
-        };
-        var subLbl = new Label
-        {
-            Text = AppStrings.T("LoginTitle"),
-            ForeColor = Color.FromArgb(148, 163, 184),
-            Font = AppTheme.BodyFont,
-            AutoSize = true,
-            Location = new Point(30, 44)
-        };
-        header.Controls.AddRange([titleLbl, subLbl]);
 
-        var layout = new TableLayoutPanel
+        // Left Enterprise Hero Brand Panel
+        _heroPanel = new System.Windows.Forms.Panel
+        {
+            Dock = DockStyle.Left,
+            Width = 350,
+            BackColor = AppTheme.SidebarBg,
+            Padding = new Padding(28, 34, 24, 24)
+        };
+
+        var brandBadge = new AntdUI.Tag
+        {
+            Text = "LOGISTICS ERP v2",
+            Type = TTypeMini.Primary,
+            Radius = 6,
+            Location = new Point(28, 34),
+            AutoSize = true,
+            Font = AppTheme.SmallFont
+        };
+
+        var heroTitle = new Label
+        {
+            Text = "Điều hành Logistics\nToàn diện & Tập trung",
+            Font = new Font("Segoe UI", 17F, FontStyle.Bold),
+            ForeColor = Color.White,
+            Location = new Point(28, 76),
+            Size = new Size(295, 72),
+            BackColor = Color.Transparent
+        };
+
+        var heroDesc = new Label
+        {
+            Text =
+                "• Quản trị Tổ chức, CRM, Sản phẩm\n" +
+                "• Quy trình Đơn hàng -> Vận đơn -> 3PL\n" +
+                "• Kho bãi WMS, Tồn kho Lot/Serial\n" +
+                "• Tài chính, Công nợ & Đối soát COD\n" +
+                "• Bảo mật JWT, DPAPI & Phân quyền Chi nhánh",
+            Font = AppTheme.BodyFont,
+            ForeColor = Color.FromArgb(203, 213, 225),
+            Location = new Point(28, 166),
+            Size = new Size(295, 195),
+            BackColor = Color.Transparent
+        };
+
+        _apiFootLabel = new Label
+        {
+            Dock = DockStyle.Bottom,
+            Height = 48,
+            Font = AppTheme.SmallFont,
+            ForeColor = Color.FromArgb(148, 163, 184),
+            BackColor = Color.Transparent,
+            TextAlign = ContentAlignment.BottomLeft
+        };
+
+        _heroPanel.Controls.Add(_apiFootLabel);
+        _heroPanel.Controls.Add(heroDesc);
+        _heroPanel.Controls.Add(heroTitle);
+        _heroPanel.Controls.Add(brandBadge);
+
+        // Right Login Form Surface
+        _formHost = new System.Windows.Forms.Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(36, 20, 36, 24)
+        };
+
+        var topTools = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 40,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            BackColor = Color.Transparent
+        };
+
+        _themeBtn = AppTheme.CreateSecondaryButton(AppTheme.IsDark ? "☀ Sáng" : "🌙 Tối", 94);
+        _themeBtn.Click += (_, _) =>
+        {
+            AppTheme.ToggleTheme(this);
+            _themeBtn.Text = AppTheme.IsDark ? "☀ Sáng" : "🌙 Tối";
+        };
+
+        _settingsBtn = AppTheme.CreateSecondaryButton("⚙ Cấu hình API", 132);
+        _settingsBtn.Click += async (_, _) => await OpenQuickSettingsAsync();
+
+        _testApiBtn = AppTheme.CreateSecondaryButton("Kiểm tra kết nối", 134);
+        _testApiBtn.Click += async (_, _) => await TestApiHealthAsync();
+
+        topTools.Controls.Add(_themeBtn);
+        topTools.Controls.Add(_settingsBtn);
+        topTools.Controls.Add(_testApiBtn);
+
+        _loginCard = AppTheme.CreateCardPanel(new Padding(28, 22, 28, 22), radius: 10);
+        _loginCard.Dock = DockStyle.Fill;
+        _loginCard.Margin = new Padding(0, 12, 0, 0);
+
+        var stack = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            AutoScroll = true
+            RowCount = 9,
+            BackColor = Color.Transparent
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 8; i++)
+            stack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        stack.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        _envLabel = new Label
+        _welcomeTitle = new Label
         {
+            Text = AppStrings.T("Login"),
+            Font = AppTheme.PageTitleFont,
             AutoSize = true,
-            ForeColor = AppTheme.TextMuted,
+            Margin = new Padding(0, 0, 0, 4),
+            BackColor = Color.Transparent
+        };
+
+        _welcomeSub = new Label
+        {
+            Text = "Đăng nhập bằng tài khoản nhân viên hoặc quản trị viên được cấp quyền.",
             Font = AppTheme.SmallFont,
-            Margin = new Padding(0, 0, 0, 12)
-        };
-        RefreshEnvSummary();
-
-        var lblUser = new Label { Text = AppStrings.T("UsernameOrEmail"), AutoSize = true, Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextSecondary, Margin = new Padding(0, 4, 0, 4) };
-        _usernameBox = new TextBox
-        {
-            Dock = DockStyle.Top,
-            Height = 30,
-            Font = new Font("Segoe UI", 10.5F),
-            Text = _tokenStore.LoadRememberedUsername() ?? string.Empty
-        };
-
-        var lblPass = new Label { Text = AppStrings.T("Password"), AutoSize = true, Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextSecondary, Margin = new Padding(0, 12, 0, 4) };
-        _passwordBox = new TextBox
-        {
-            Dock = DockStyle.Top,
-            Height = 30,
-            Font = new Font("Segoe UI", 10.5F),
-            UseSystemPasswordChar = true
-        };
-
-        var checksFlow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 32, Margin = new Padding(0, 6, 0, 4) };
-        _showPasswordCheck = new CheckBox { Text = AppStrings.T("ShowPassword"), AutoSize = true, Margin = new Padding(0, 4, 16, 0) };
-        _showPasswordCheck.CheckedChanged += (_, _) => _passwordBox.UseSystemPasswordChar = !_showPasswordCheck.Checked;
-        _rememberUsernameCheck = new CheckBox { Text = AppStrings.T("RememberUsername"), AutoSize = true, Checked = !string.IsNullOrWhiteSpace(_usernameBox.Text), Margin = new Padding(0, 4, 0, 0) };
-        checksFlow.Controls.AddRange([_showPasswordCheck, _rememberUsernameCheck]);
-
-        _errorLabel = new Label
-        {
             AutoSize = true,
-            MaximumSize = new Size(390, 0),
-            ForeColor = AppTheme.DangerRed,
-            BackColor = Color.FromArgb(254, 242, 242),
-            Padding = new Padding(10),
-            Visible = false,
-            Margin = new Padding(0, 8, 0, 8)
+            Margin = new Padding(0, 0, 0, 16),
+            BackColor = Color.Transparent
         };
 
-        _progressBar = new ProgressBar
+        _userLabel = new Label
+        {
+            Text = AppStrings.T("Username"),
+            Font = AppTheme.BodyBoldFont,
+            AutoSize = true,
+            Margin = new Padding(0, 4, 0, 4),
+            BackColor = Color.Transparent
+        };
+
+        _usernameInput = new AntdUI.Input
         {
             Dock = DockStyle.Top,
-            Style = ProgressBarStyle.Marquee,
-            Height = 6,
-            Visible = false,
-            Margin = new Padding(0, 4, 0, 8)
+            Height = 38,
+            Radius = 6,
+            AllowClear = true,
+            PlaceholderText = "Ví dụ: admin hoặc email nhân viên",
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 0, 0, 10)
         };
 
-        _loginBtn = AppTheme.CreatePrimaryButton(AppStrings.T("SignIn"), 160);
-        _loginBtn.Dock = DockStyle.Top;
-        _loginBtn.Height = 40;
-        _loginBtn.Click += async (_, _) => await SignInAsync();
+        _passLabel = new Label
+        {
+            Text = AppStrings.T("Password"),
+            Font = AppTheme.BodyBoldFont,
+            AutoSize = true,
+            Margin = new Padding(0, 4, 0, 4),
+            BackColor = Color.Transparent
+        };
 
-        var bottomActions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Margin = new Padding(0, 12, 0, 0) };
-        _settingsBtn = AppTheme.CreateSecondaryButton("Cấu hình API", 125);
-        _settingsBtn.Click += (_, _) => OpenQuickSettingsDialog();
-        _testConnBtn = AppTheme.CreateSecondaryButton("Kiểm tra kết nối", 145);
-        _testConnBtn.Click += async (_, _) => await TestConnectionAsync();
-        bottomActions.Controls.AddRange([_settingsBtn, _testConnBtn]);
+        _passwordInput = new AntdUI.Input
+        {
+            Dock = DockStyle.Top,
+            Height = 38,
+            Radius = 6,
+            UseSystemPasswordChar = true,
+            PlaceholderText = "Nhập mật khẩu...",
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 0, 0, 8)
+        };
+        _passwordInput.KeyDown += async (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.Handled = true;
+                await ExecuteLoginAsync();
+            }
+        };
 
-        layout.Controls.Add(_envLabel);
-        layout.Controls.Add(lblUser);
-        layout.Controls.Add(_usernameBox);
-        layout.Controls.Add(lblPass);
-        layout.Controls.Add(_passwordBox);
-        layout.Controls.Add(checksFlow);
-        layout.Controls.Add(_progressBar);
-        layout.Controls.Add(_errorLabel);
-        layout.Controls.Add(_loginBtn);
-        layout.Controls.Add(bottomActions);
+        var optRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 32,
+            FlowDirection = FlowDirection.LeftToRight,
+            BackColor = Color.Transparent,
+            Margin = new Padding(0, 2, 0, 10)
+        };
 
-        card.Controls.Add(layout);
-        Controls.Add(card);
-        Controls.Add(header);
+        _rememberCheck = new AntdUI.Checkbox
+        {
+            Text = AppStrings.T("RememberUsername"),
+            AutoSize = true,
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 4, 18, 0)
+        };
 
-        AcceptButton = _loginBtn;
+        _showPasswordCheck = new AntdUI.Checkbox
+        {
+            Text = "Hiện mật khẩu",
+            AutoSize = true,
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 4, 0, 0)
+        };
+        _showPasswordCheck.CheckedChanged += (_, e) => _passwordInput.UseSystemPasswordChar = !e.Value;
+
+        optRow.Controls.Add(_rememberCheck);
+        optRow.Controls.Add(_showPasswordCheck);
+
+        _statusAlert = new AntdUI.Alert
+        {
+            Dock = DockStyle.Top,
+            Height = 46,
+            Radius = 6,
+            Visible = false,
+            Font = AppTheme.SmallFont,
+            Margin = new Padding(0, 0, 0, 10)
+        };
+
+        _signInBtn = AppTheme.CreatePrimaryButton(AppStrings.T("Login"), 260);
+        _signInBtn.Dock = DockStyle.Top;
+        _signInBtn.Height = 40;
+        _signInBtn.Click += async (_, _) => await ExecuteLoginAsync();
+
+        stack.Controls.Add(_welcomeTitle, 0, 0);
+        stack.Controls.Add(_welcomeSub, 0, 1);
+        stack.Controls.Add(_userLabel, 0, 2);
+        stack.Controls.Add(_usernameInput, 0, 3);
+        stack.Controls.Add(_passLabel, 0, 4);
+        stack.Controls.Add(_passwordInput, 0, 5);
+        stack.Controls.Add(optRow, 0, 6);
+        stack.Controls.Add(_statusAlert, 0, 7);
+        stack.Controls.Add(_signInBtn, 0, 8);
+
+        _loginCard.Controls.Add(stack);
+
+        _formHost.Controls.Add(_loginCard);
+        _formHost.Controls.Add(topTools);
+
+        Controls.Add(_formHost);
+        Controls.Add(_heroPanel);
+        Controls.Add(_windowBar);
+
+        LoadSavedUsernameAndSettings();
+        ApplyTheme();
     }
 
-    private void RefreshEnvSummary()
+    private void LoadSavedUsernameAndSettings()
+    {
+        var remembered = _tokenStore.LoadRememberedUsername();
+        if (!string.IsNullOrWhiteSpace(remembered))
+        {
+            _usernameInput.Text = remembered;
+            _rememberCheck.Checked = true;
+            _passwordInput.Focus();
+        }
+        RefreshApiFooter();
+    }
+
+    private void RefreshApiFooter()
     {
         var s = _settingsService.Settings;
-        var urlText = string.IsNullOrWhiteSpace(s.ApiBaseUrl) ? "(Chưa cấu hình URL)" : s.ApiBaseUrl;
-        _envLabel.Text = $"Môi trường: {s.Environment} | API: {urlText}";
+        _apiFootLabel.Text = $"Môi trường: {s.Environment} | Timeout: {s.TimeoutSeconds}s\nAPI: {s.ApiBaseUrl}";
     }
 
-    private async Task SignInAsync()
+    private async Task ExecuteLoginAsync()
     {
-        _errorLabel.Visible = false;
-        var user = _usernameBox.Text.Trim();
-        var pass = _passwordBox.Text;
+        var username = _usernameInput.Text.Trim();
+        var password = _passwordInput.Text;
 
-        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass))
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
         {
-            ShowError("Vui lòng nhập tên đăng nhập và mật khẩu.");
+            ShowAlert("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.", TType.Warn);
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_settingsService.Settings.ApiBaseUrl))
-        {
-            ShowError("API Base URL chưa được cấu hình cho môi trường hiện tại. Nhấn 'Cấu hình API' để thiết lập.");
-            return;
-        }
+        _signInBtn.Loading = true;
+        _signInBtn.Enabled = false;
+        _statusAlert.Visible = false;
+        UseWaitCursor = true;
 
-        ToggleBusy(true);
         try
         {
-            var (success, err) = await _authService.LoginDetailedAsync(user, pass, _rememberUsernameCheck.Checked);
-            if (success)
+            var (success, error) = await _authService.LoginDetailedAsync(username, password, _rememberCheck.Checked);
+            if (!success)
             {
-                _passwordBox.Clear();
-                DialogResult = DialogResult.OK;
-                Close();
+                ShowAlert(error ?? "Đăng nhập thất bại. Vui lòng kiểm tra thông tin tài khoản.", TType.Error);
                 return;
             }
 
-            ShowError(err ?? "Đăng nhập không thành công.");
-        }
-        finally
-        {
-            if (!IsDisposed) ToggleBusy(false);
-        }
-    }
-
-    private async Task TestConnectionAsync()
-    {
-        _errorLabel.Visible = false;
-        ToggleBusy(true);
-        try
-        {
-            var health = await _healthClient.GetHealthAsync();
-            if (health != null)
-            {
-                MessageBox.Show(this,
-                    $"Kết nối thành công!\nTrạng thái: {health.Status}\nMôi trường API: {health.Environment}\nPhiên bản: {health.Version}",
-                    "Kiểm tra kết nối",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-            }
-            else
-            {
-                ShowError(AppStrings.T("ApiUnreachable"));
-            }
+            DialogResult = DialogResult.OK;
+            Close();
         }
         catch (Exception ex)
         {
-            ShowError(ex.Message);
+            _logger.LogError(ex, "Login failed unexpectedly.");
+            ShowAlert($"Không thể đăng nhập: {ex.Message}", TType.Error);
         }
         finally
         {
-            if (!IsDisposed) ToggleBusy(false);
+            if (!IsDisposed)
+            {
+                UseWaitCursor = false;
+                _signInBtn.Loading = false;
+                _signInBtn.Enabled = true;
+            }
         }
     }
 
-    private void OpenQuickSettingsDialog()
+    private async Task TestApiHealthAsync()
+    {
+        _testApiBtn.Loading = true;
+        _testApiBtn.Enabled = false;
+        try
+        {
+            var health = await _healthApi.GetHealthAsync();
+            if (health != null)
+                ShowAlert($"Kết nối API thành công ({health.Status} - {health.Environment ?? _settingsService.Settings.Environment}).", TType.Success);
+            else
+                ShowAlert("API phản hồi trống.", TType.Warn);
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Không thể kết nối API {_settingsService.Settings.ApiBaseUrl}: {ex.Message}", TType.Error);
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                _testApiBtn.Loading = false;
+                _testApiBtn.Enabled = true;
+            }
+        }
+    }
+
+    private Task OpenQuickSettingsAsync()
     {
         var cur = _settingsService.Settings;
-        var dlg = new ModalFormDialog("Cấu hình kết nối API", [
+        var dlg = new ModalFormDialog("Cấu hình API & Giao diện", [
             new ModalFieldSpec
             {
-                Key = "Environment", Label = "Môi trường", Kind = ModalFieldKind.ComboBox, Required = true, InitialValue = cur.Environment,
-                Options = [new("Development", "Development"), new("Production", "Production")]
+                Key = "Environment", Label = "Môi trường", Kind = ModalFieldKind.ComboBox, Required = true,
+                InitialValue = cur.Environment,
+                Options = _settingsService.AvailableEnvironments.Select(e => new ModalComboOption(e, e)).ToList()
             },
-            new ModalFieldSpec { Key = "ApiBaseUrl", Label = "API Base URL", Kind = ModalFieldKind.Text, Required = true, InitialValue = cur.ApiBaseUrl },
-            new ModalFieldSpec { Key = "TimeoutSeconds", Label = "Timeout (giây)", Kind = ModalFieldKind.Integer, Required = true, InitialValue = cur.TimeoutSeconds },
             new ModalFieldSpec
             {
-                Key = "Culture", Label = "Ngôn ngữ", Kind = ModalFieldKind.ComboBox, Required = true, InitialValue = cur.Culture,
+                Key = "ApiBaseUrl", Label = "API Base URL", Required = true, InitialValue = cur.ApiBaseUrl,
+                Placeholder = "http://localhost:5289"
+            },
+            new ModalFieldSpec
+            {
+                Key = "TimeoutSeconds", Label = "Timeout (giây)", Kind = ModalFieldKind.Integer, Required = true,
+                InitialValue = cur.TimeoutSeconds, MinValue = 5, MaxValue = 300
+            },
+            new ModalFieldSpec
+            {
+                Key = "Culture", Label = "Ngôn ngữ", Kind = ModalFieldKind.ComboBox, Required = true,
+                InitialValue = cur.Culture,
                 Options = [new("vi-VN", "Tiếng Việt (vi-VN)"), new("en-US", "English (en-US)")]
+            },
+            new ModalFieldSpec
+            {
+                Key = "Theme", Label = "Giao diện", Kind = ModalFieldKind.ComboBox, Required = true,
+                InitialValue = AppTheme.CurrentMode.ToString(),
+                Options = [new("Light", "Light (Sáng)"), new("Dark", "Dark (Tối)")]
             }
-        ]);
+        ], v =>
+        {
+            var env = v["Environment"]!.ToString()!;
+            var url = v["ApiBaseUrl"]!.ToString()!;
+            var timeout = Convert.ToInt32(v["TimeoutSeconds"]);
+            var culture = v["Culture"]!.ToString()!;
+            _settingsService.UpdateSettings(env, url, timeout, culture);
+
+            if (Enum.TryParse<AppThemeMode>(v["Theme"]?.ToString(), true, out var themeMode))
+                AppTheme.SetTheme(themeMode, this);
+
+            return Task.CompletedTask;
+        }, "Lưu cấu hình");
 
         if (dlg.ShowDialog(this) == DialogResult.OK)
         {
-            try
-            {
-                _settingsService.UpdateSettings(
-                    dlg.GetString("Environment"),
-                    dlg.GetString("ApiBaseUrl"),
-                    dlg.GetInt("TimeoutSeconds"),
-                    dlg.GetString("Culture"));
-                RefreshEnvSummary();
-            }
-            catch (Exception ex)
-            {
-                ShowError(ex.Message);
-            }
+            RefreshApiFooter();
+            _themeBtn.Text = AppTheme.IsDark ? "☀ Sáng" : "🌙 Tối";
+            ShowAlert("Đã cập nhật cấu hình kết nối & giao diện.", TType.Success);
         }
+
+        return Task.CompletedTask;
     }
 
-    private void ToggleBusy(bool busy)
+    private void ShowAlert(string text, TType icon)
     {
-        _loginBtn.Enabled = !busy;
-        _settingsBtn.Enabled = !busy;
-        _testConnBtn.Enabled = !busy;
-        _loginBtn.Text = busy ? AppStrings.T("SigningIn") : AppStrings.T("SignIn");
-        _progressBar.Visible = busy;
-        UseWaitCursor = busy;
+        _statusAlert.Text = text;
+        _statusAlert.Icon = icon;
+        _statusAlert.Visible = true;
     }
 
-    private void ShowError(string message)
+    public void ApplyTheme()
     {
-        _errorLabel.Text = message;
-        _errorLabel.Visible = true;
+        Mode = AppTheme.IsDark ? TAMode.Dark : TAMode.Light;
+        BackColor = AppTheme.SurfaceBg;
+        ForeColor = AppTheme.TextPrimary;
+        _windowBar.BackColor = AppTheme.HeaderBg;
+        _windowBar.ForeColor = AppTheme.TextPrimary;
+        _windowBar.DividerColor = AppTheme.BorderSubtle;
+        _formHost.BackColor = AppTheme.SurfaceBg;
+        _welcomeTitle.ForeColor = AppTheme.TextPrimary;
+        _welcomeSub.ForeColor = AppTheme.TextSecondary;
+        _userLabel.ForeColor = AppTheme.TextPrimary;
+        _passLabel.ForeColor = AppTheme.TextPrimary;
+        _rememberCheck.ForeColor = AppTheme.TextPrimary;
+        _showPasswordCheck.ForeColor = AppTheme.TextPrimary;
+        _loginCard.Back = AppTheme.CardBg;
+        _loginCard.BorderColor = AppTheme.BorderSubtle;
+        _loginCard.Invalidate();
     }
 }

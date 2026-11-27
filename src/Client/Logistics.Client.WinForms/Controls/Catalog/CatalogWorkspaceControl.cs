@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Catalog;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -9,27 +10,27 @@ using Microsoft.Extensions.Logging;
 
 namespace Logistics.Client.WinForms.Controls.Catalog;
 
-public sealed class CatalogWorkspaceControl : ModuleViewBase
+/// <summary>
+/// AntdUI Catalog workspace managing Products (SKU), Categories, Units of Measure, and Read-Only Services.
+/// </summary>
+public sealed class CatalogWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly ICatalogApiClient _catalogApi;
     private readonly IAuthorizationService _auth;
     private readonly ILogger<CatalogWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabProducts = new("Sản phẩm (SKU)") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabCategories = new("Nhóm sản phẩm") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabUnits = new("Đơn vị tính") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabServices = new("Dịch vụ (Chỉ xem)") { BackColor = AppTheme.SurfaceBg };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabProducts = new() { Text = "Sản phẩm (SKU)" };
+    private readonly AntdUI.TabPage _tabCategories = new() { Text = "Nhóm sản phẩm" };
+    private readonly AntdUI.TabPage _tabUnits = new() { Text = "Đơn vị tính" };
+    private readonly AntdUI.TabPage _tabServices = new() { Text = "Dịch vụ (Chỉ xem)" };
 
     private PagedDataGridControl _productsGrid = null!;
     private PagedDataGridControl _categoriesGrid = null!;
     private PagedDataGridControl _unitsGrid = null!;
     private PagedDataGridControl _servicesGrid = null!;
 
-    public CatalogWorkspaceControl(
-        ICatalogApiClient catalogApi,
-        IAuthorizationService auth,
-        ILogger<CatalogWorkspaceControl> logger)
+    public CatalogWorkspaceControl(ICatalogApiClient catalogApi, IAuthorizationService auth, ILogger<CatalogWorkspaceControl> logger)
     {
         _catalogApi = catalogApi;
         _auth = auth;
@@ -40,39 +41,42 @@ public sealed class CatalogWorkspaceControl : ModuleViewBase
         BuildUnitsTab();
         BuildServicesTab();
 
-        if (_auth.HasPermission(ClientPermissions.Catalog.ProductsRead)) _tabs.TabPages.Add(_tabProducts);
-        if (_auth.HasPermission(ClientPermissions.Catalog.CategoriesRead)) _tabs.TabPages.Add(_tabCategories);
-        if (_auth.HasPermission(ClientPermissions.Catalog.UnitsRead)) _tabs.TabPages.Add(_tabUnits);
-        if (_auth.HasPermission(ClientPermissions.Catalog.ServicesRead)) _tabs.TabPages.Add(_tabServices);
+        if (_auth.HasPermission(ClientPermissions.Catalog.ProductsRead)) _tabs.Pages.Add(_tabProducts);
+        if (_auth.HasPermission(ClientPermissions.Catalog.CategoriesRead)) _tabs.Pages.Add(_tabCategories);
+        if (_auth.HasPermission(ClientPermissions.Catalog.UnitsRead)) _tabs.Pages.Add(_tabUnits);
+        if (_auth.HasPermission(ClientPermissions.Catalog.ServicesRead)) _tabs.Pages.Add(_tabServices);
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
     {
         var tab = navKey switch
         {
+            "Catalog.Products" => _tabProducts,
             "Catalog.Categories" => _tabCategories,
             "Catalog.Units" => _tabUnits,
             "Catalog.Services" => _tabServices,
             _ => _tabProducts
         };
-        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
+        if (_tabs.Pages.Contains(tab))
+            _tabs.SelectedTab = tab;
     }
 
     private void BuildProductsTab()
     {
-        _productsGrid = new PagedDataGridControl("Sản phẩm (SKU)", "Quản lý danh mục hàng hóa và thông số đóng gói.");
+        _productsGrid = new PagedDataGridControl("Sản phẩm (SKU)", "Quản lý danh mục sản phẩm, trọng lượng, kích thước và giá trị khai báo.");
         if (_auth.HasPermission(ClientPermissions.Catalog.ProductsCreate))
         {
-            var addBtn = AppTheme.CreatePrimaryButton("Thêm SP", 105);
+            var addBtn = AppTheme.CreatePrimaryButton("Thêm SKU", 110);
             addBtn.Click += async (_, _) => await CreateOrEditProductAsync(null);
             _productsGrid.AddActionButton(addBtn);
         }
         if (_auth.HasPermission(ClientPermissions.Catalog.ProductsUpdate))
         {
-            var editBtn = AppTheme.CreateSecondaryButton("Sửa SP", 90);
+            var editBtn = AppTheme.CreateSecondaryButton("Sửa", 80);
             editBtn.Click += async (_, _) =>
             {
                 var p = _productsGrid.GetSelectedRow<ProductDto>();
@@ -82,7 +86,7 @@ public sealed class CatalogWorkspaceControl : ModuleViewBase
         }
         if (_auth.HasPermission(ClientPermissions.Catalog.ProductsManageStatus))
         {
-            var togBtn = AppTheme.CreateDangerButton("Bật/Tắt", 90);
+            var togBtn = AppTheme.CreateDangerButton("Bật/Tắt TT", 105);
             togBtn.Click += async (_, _) =>
             {
                 var p = _productsGrid.GetSelectedRow<ProductDto>();
@@ -276,5 +280,10 @@ public sealed class CatalogWorkspaceControl : ModuleViewBase
             _servicesGrid.BindListData(await _catalogApi.GetServicesAsync());
         }, logger: _logger, showMessageBoxOnError: false);
         _servicesGrid.SetLoading(false);
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
     }
 }

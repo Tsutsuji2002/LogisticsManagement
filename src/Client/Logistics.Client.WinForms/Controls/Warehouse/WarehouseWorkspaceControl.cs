@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Warehouse;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -6,10 +7,11 @@ using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
 using Logistics.Shared.Contracts.Pagination;
 using Microsoft.Extensions.Logging;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Warehouse;
 
-public sealed class WarehouseWorkspaceControl : ModuleViewBase
+public sealed class WarehouseWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly IWarehouseApiClient _warehouseApi;
     private readonly IOrganizationApiClient _orgApi;
@@ -19,19 +21,20 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
     private readonly IBranchContextService _branchContext;
     private readonly ILogger<WarehouseWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabFacilities = new("Kho bãi, Khu vực & Vị trí") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabParcelHub = new("Quét & Xử lý bưu kiện (Parcel Hub)") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabDispatches = new("Phiếu xuất kho / Hub") { BackColor = AppTheme.SurfaceBg };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabFacilities = new() { Text = "Kho bãi, Khu vực & Vị trí" };
+    private readonly AntdUI.TabPage _tabParcelHub = new() { Text = "Quét & Xử lý bưu kiện (Parcel Hub)" };
+    private readonly AntdUI.TabPage _tabDispatches = new() { Text = "Phiếu xuất kho / Hub" };
 
     private PagedDataGridControl _warehousesGrid = null!;
-    private readonly DataGridView _zonesGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _locationsGrid = new() { Dock = DockStyle.Fill };
+    private readonly AntdUI.Table _zonesGrid = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _locationsGrid = AppTheme.CreateAntdTable();
     private WarehouseDto? _selectedWarehouse;
     private WarehouseZoneDto? _selectedZone;
 
-    private ComboBox _hubWarehouseCombo = null!;
-    private TextBox _scanInputBox = null!;
+    private AntdUI.Panel _hubCard = null!;
+    private AntdUI.Select _hubWarehouseCombo = null!;
+    private AntdUI.Input _scanInputBox = null!;
     private Label _scanResultLabel = null!;
     private PagedDataGridControl _parcelEventsGrid = null!;
     private PagedDataGridControl _dispatchesGrid = null!;
@@ -58,14 +61,15 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
         BuildDispatchesTab();
 
         if (_auth.HasAnyPermission(ClientPermissions.Warehouse.WarehousesRead, ClientPermissions.Warehouse.WarehousesManage))
-            _tabs.TabPages.Add(_tabFacilities);
+            _tabs.Pages.Add(_tabFacilities);
         if (_auth.HasAnyPermission(ClientPermissions.Warehouse.OperationsRead, ClientPermissions.Warehouse.SortingManage))
-            _tabs.TabPages.Add(_tabParcelHub);
+            _tabs.Pages.Add(_tabParcelHub);
         if (_auth.HasAnyPermission(ClientPermissions.Warehouse.OperationsRead, ClientPermissions.Warehouse.DispatchesManage))
-            _tabs.TabPages.Add(_tabDispatches);
+            _tabs.Pages.Add(_tabDispatches);
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
@@ -76,7 +80,7 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
             "Warehouse.Dispatches" => _tabDispatches,
             _ => _tabFacilities
         };
-        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
+        if (_tabs.Pages.Contains(tab)) _tabs.SelectedTab = tab;
     }
 
     private void BuildFacilitiesTab()
@@ -117,11 +121,9 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
             _auth.HasPermission(ClientPermissions.Warehouse.LocationsManage) ? ("Thêm Location", CreateLocationAsync) : null,
             _auth.HasPermission(ClientPermissions.Warehouse.LocationsManage) ? ("Khóa/Mở Location", ToggleLocationBlockAsync) : null));
 
-        AppTheme.StyleDataGrid(_zonesGrid);
-        AppTheme.StyleDataGrid(_locationsGrid);
-        _zonesGrid.SelectionChanged += async (_, _) =>
+        _zonesGrid.CellClick += async (_, _) =>
         {
-            _selectedZone = _zonesGrid.CurrentRow?.DataBoundItem as WarehouseZoneDto;
+            _selectedZone = AppTheme.GetSelectedAntdRow<WarehouseZoneDto>(_zonesGrid);
             await LoadLocationsOnlyAsync();
         };
 
@@ -132,8 +134,9 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
 
     private void BuildParcelHubTab()
     {
-        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 190, 150);
-        var hubCard = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.CardBg, Padding = new Padding(16) };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 200, 160);
+        _hubCard = AppTheme.CreateCardPanel(new Padding(16));
+        _hubCard.Dock = DockStyle.Fill;
 
         var header = new Label
         {
@@ -141,17 +144,18 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
             Font = AppTheme.SectionTitleFont,
             ForeColor = AppTheme.TextPrimary,
             Dock = DockStyle.Top,
-            Height = 28
+            Height = 28,
+            BackColor = Color.Transparent
         };
 
-        var controlsFlow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 52, WrapContents = true, Padding = new Padding(0, 6, 0, 0) };
-        _hubWarehouseCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220, Font = AppTheme.BodyFont };
-        _scanInputBox = new TextBox { PlaceholderText = "Nhập Tracking / Barcode bưu kiện...", Width = 260, Font = AppTheme.BodyFont };
+        var controlsFlow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, WrapContents = true, Padding = new Padding(0, 4, 0, 0), BackColor = Color.Transparent };
+        _hubWarehouseCombo = new AntdUI.Select { Width = 240, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 4) };
+        _scanInputBox = new AntdUI.Input { PlaceholderText = "Nhập Tracking / Barcode bưu kiện...", Width = 270, Height = 34, Radius = 6, AllowClear = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 4) };
         var scanBtn = AppTheme.CreatePrimaryButton("Quét bưu kiện", 130);
         scanBtn.Click += async (_, _) => await ScanParcelAsync();
         controlsFlow.Controls.AddRange([_hubWarehouseCombo, _scanInputBox, scanBtn]);
 
-        var opsFlow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, WrapContents = true };
+        var opsFlow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, WrapContents = true, BackColor = Color.Transparent };
         var recvBtn = AppTheme.CreateSuccessButton("1. Nhập Hub (Receive)", 155);
         recvBtn.Click += async (_, _) => await ReceiveParcelAsync();
         var sortBtn = AppTheme.CreateSecondaryButton("2. Phân loại (Sort)", 155);
@@ -176,15 +180,15 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
             Text = "Quét mã vận đơn hoặc barcode kiện hàng để xem trạng thái và thao tác tiếp theo được phép."
         };
 
-        hubCard.Controls.Add(_scanResultLabel);
-        hubCard.Controls.Add(opsFlow);
-        hubCard.Controls.Add(controlsFlow);
-        hubCard.Controls.Add(header);
+        _hubCard.Controls.Add(_scanResultLabel);
+        _hubCard.Controls.Add(opsFlow);
+        _hubCard.Controls.Add(controlsFlow);
+        _hubCard.Controls.Add(header);
 
         _parcelEventsGrid = new PagedDataGridControl("Lịch sử quét & xử lý bưu kiện (ParcelHandlingEvents)", "Theo dõi mọi sự kiện nhập hub, phân loại, đóng bao và ngoại lệ.");
         _parcelEventsGrid.ReloadRequested += async (_, _) => await LoadParcelEventsAsync();
 
-        split.Panel1.Controls.Add(hubCard);
+        split.Panel1.Controls.Add(_hubCard);
         split.Panel2.Controls.Add(_parcelEventsGrid);
         _tabParcelHub.Controls.Add(split);
     }
@@ -207,13 +211,14 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
 
     private static Control BuildSubPanel(
         string title,
-        DataGridView grid,
+        AntdUI.Table grid,
         (string Text, Func<Task> Handler)? action1 = null,
         (string Text, Func<Task> Handler)? action2 = null)
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.CardBg, Padding = new Padding(10) };
-        var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38 };
-        top.Controls.Add(new Label { Text = title, Font = AppTheme.SectionTitleFont, AutoSize = true, Margin = new Padding(0, 8, 12, 0) });
+        var panel = AppTheme.CreateCardPanel(new Padding(10));
+        panel.Dock = DockStyle.Fill;
+        var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, BackColor = Color.Transparent };
+        top.Controls.Add(new Label { Text = title, Font = AppTheme.SectionTitleFont, AutoSize = true, Margin = new Padding(0, 8, 12, 0), BackColor = Color.Transparent });
         if (action1.HasValue)
         {
             var b1 = AppTheme.CreatePrimaryButton(action1.Value.Text, 120);
@@ -242,20 +247,16 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
     private async Task EnsureWarehouseComboPopulatedAsync()
     {
         var list = await _warehouseApi.GetWarehousesAsync(null, _branchContext.ActiveBranchId, null, true, 1, 100);
-        var prev = (_hubWarehouseCombo.SelectedItem as ModalComboOption)?.Value;
+        var prev = ResolveWarehouseIdForHub();
         _hubWarehouseCombo.Items.Clear();
         foreach (var w in list.Items)
-            _hubWarehouseCombo.Items.Add(new ModalComboOption(w.Id, $"{w.Code} - {w.Name} ({w.Type})"));
+            _hubWarehouseCombo.Items.Add(new SelectItem($"{w.Code} - {w.Name} ({w.Type})", w.Id));
         if (_hubWarehouseCombo.Items.Count > 0)
         {
-            if (prev != null)
-            {
-                foreach (ModalComboOption item in _hubWarehouseCombo.Items)
-                {
-                    if (Equals(item.Value, prev)) { _hubWarehouseCombo.SelectedItem = item; return; }
-                }
-            }
-            _hubWarehouseCombo.SelectedIndex = 0;
+            if (prev > 0)
+                _hubWarehouseCombo.SelectedValue = prev;
+            if (_hubWarehouseCombo.SelectedIndex < 0)
+                _hubWarehouseCombo.SelectedIndex = 0;
         }
     }
 
@@ -266,8 +267,9 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
         {
             var page = await _warehouseApi.GetWarehousesAsync(_warehousesGrid.SearchText, _branchContext.ActiveBranchId, null, null, _warehousesGrid.CurrentPage, _warehousesGrid.CurrentPageSize);
             _warehousesGrid.BindPagedData(page);
-            if (_warehousesGrid.Grid.Rows.Count > 0)
+            if (_warehousesGrid.RowCount > 0)
             {
+                _warehousesGrid.SelectFirstRow();
                 _selectedWarehouse = _warehousesGrid.GetSelectedRow<WarehouseDto>();
                 await LoadZonesAndLocationsAsync();
             }
@@ -279,12 +281,12 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
     {
         if (_selectedWarehouse == null)
         {
-            _zonesGrid.DataSource = null;
-            _locationsGrid.DataSource = null;
+            AppTheme.BindAntdTable(_zonesGrid, Array.Empty<WarehouseZoneDto>());
+            AppTheme.BindAntdTable(_locationsGrid, Array.Empty<WarehouseLocationDto>());
             return;
         }
         var zones = await _warehouseApi.GetZonesAsync(_selectedWarehouse.Id.ToString());
-        _zonesGrid.DataSource = zones.ToList();
+        AppTheme.BindAntdTable(_zonesGrid, zones);
         _selectedZone = zones.FirstOrDefault();
         await LoadLocationsOnlyAsync();
     }
@@ -293,7 +295,7 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
     {
         if (_selectedWarehouse == null) return;
         var locs = await _warehouseApi.GetLocationsAsync(_selectedWarehouse.Id.ToString(), _selectedZone?.Id, 1, 100);
-        _locationsGrid.DataSource = locs.Items.ToList();
+        AppTheme.BindAntdTable(_locationsGrid, locs.Items);
     }
 
     private async Task CreateWarehouseAsync()
@@ -377,7 +379,8 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
     private async Task ToggleLocationBlockAsync()
     {
         if (_selectedWarehouse == null) return;
-        if (_locationsGrid.CurrentRow?.DataBoundItem is not WarehouseLocationDto loc) return;
+        var loc = AppTheme.GetSelectedAntdRow<WarehouseLocationDto>(_locationsGrid);
+        if (loc == null) return;
         await UiAsyncRunner.RunSafeAsync(this, async () =>
         {
             await _warehouseApi.ToggleLocationBlockAsync(_selectedWarehouse.Id.ToString(), loc.Id, !loc.IsBlocked);
@@ -386,7 +389,16 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
     }
 
     private long ResolveWarehouseIdForHub()
-        => Convert.ToInt64((_hubWarehouseCombo.SelectedItem as ModalComboOption)?.Value ?? 0L);
+    {
+        if (_hubWarehouseCombo.SelectedIndex >= 0 &&
+            _hubWarehouseCombo.SelectedIndex < _hubWarehouseCombo.Items.Count &&
+            _hubWarehouseCombo.Items[_hubWarehouseCombo.SelectedIndex] is SelectItem item &&
+            item.Tag is long id)
+        {
+            return id;
+        }
+        return _hubWarehouseCombo.SelectedValue is long directId ? directId : 0L;
+    }
 
     private long ResolveCurrentEmployeeId() => _authService.CurrentUser?.EmployeeId ?? 0L;
 
@@ -542,8 +554,8 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
         [
             new() { Key = "WarehouseId", Label = "Kho xuất", Kind = ModalFieldKind.ComboBox, Required = true, Options = warehouses.Items.Select(w => new ModalComboOption(w.Id, $"{w.Code} - {w.Name}")).ToList() },
             new() { Key = "Type", Label = "Loại xuất", Kind = ModalFieldKind.ComboBox, InitialValue = "HubTransfer", Options = [new("HubTransfer", "HubTransfer"), new("Linehaul", "Linehaul"), new("CarrierHandover", "CarrierHandover"), new("LastMileOut", "LastMileOut")] },
-            new() { Key = "DestWarehouseId", Label = "Kho đích (nếu trung chuyển)", Kind = ModalFieldKind.ComboBox, Options = warehouses.Items.Select(w => new ModalComboOption(w.Id, $"{w.Code} - {w.Name}")).Prepend(new ModalComboOption(null, "(Không chọn)")).ToList() },
-            new() { Key = "CarrierId", Label = "Đơn vị vận chuyển", Kind = ModalFieldKind.ComboBox, Options = carriers.Items.Select(c => new ModalComboOption(c.Id, $"{c.Code} - {c.Name}")).Prepend(new ModalComboOption(null, "(Nội bộ)")).ToList() },
+            new() { Key = "DestWarehouseId", Label = "Kho đích (nếu trung chuyển)", Kind = ModalFieldKind.ComboBox, Options = warehouses.Items.Select(w => new ModalComboOption(w.Id, $"{w.Code} - {w.Name}")).Prepend(new ModalComboOption(0L, "(Không chọn)")).ToList() },
+            new() { Key = "CarrierId", Label = "Đơn vị vận chuyển", Kind = ModalFieldKind.ComboBox, Options = carriers.Items.Select(c => new ModalComboOption(c.Id, $"{c.Code} - {c.Name}")).Prepend(new ModalComboOption(0L, "(Nội bộ)")).ToList() },
             new() { Key = "Vehicle", Label = "Biển số xe" },
             new() { Key = "Notes", Label = "Ghi chú", Kind = ModalFieldKind.Multiline }
         ],
@@ -553,8 +565,8 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
             {
                 WarehouseId = Convert.ToInt64(vals["WarehouseId"]),
                 DispatchType = vals["Type"]?.ToString() ?? "HubTransfer",
-                DestinationWarehouseId = vals["DestWarehouseId"] != null ? Convert.ToInt64(vals["DestWarehouseId"]) : null,
-                AssignedCarrierId = vals["CarrierId"] != null ? Convert.ToInt64(vals["CarrierId"]) : null,
+                DestinationWarehouseId = vals["DestWarehouseId"] is long did && did > 0 ? did : null,
+                AssignedCarrierId = vals["CarrierId"] is long cid && cid > 0 ? cid : null,
                 DispatchedByEmployeeId = ResolveCurrentEmployeeId(),
                 VehicleNumber = vals["Vehicle"]?.ToString(),
                 Notes = vals["Notes"]?.ToString()
@@ -573,5 +585,13 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
             await LoadDispatchesAsync();
             UiAsyncRunner.ShowInfo(this, $"Đã xác nhận xuất phiếu {row.DispatchNumber}.", "Thành công");
         }, null, null, _logger);
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _hubCard.Back = AppTheme.CardBg;
+        _hubCard.BorderColor = AppTheme.BorderSubtle;
+        _scanResultLabel.ForeColor = AppTheme.TextSecondary;
     }
 }

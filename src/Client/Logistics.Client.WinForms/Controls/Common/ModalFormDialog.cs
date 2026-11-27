@@ -1,7 +1,9 @@
+using AntdUI;
 using Logistics.Client.Application.Localization;
 using Logistics.Client.Infrastructure.Exceptions;
 using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Common;
 
@@ -17,118 +19,190 @@ public enum ModalFieldKind
     CheckBox
 }
 
-public sealed record ModalComboOption(object? Value, string Label)
+public sealed record ModalComboOption(object Value, string Display)
 {
-    public override string ToString() => Label;
+    public override string ToString() => Display;
 }
 
 public sealed class ModalFieldSpec
 {
-    public string Key { get; init; } = string.Empty;
-    public string Label { get; init; } = string.Empty;
+    public required string Key { get; init; }
+    public required string Label { get; init; }
     public ModalFieldKind Kind { get; init; } = ModalFieldKind.Text;
     public object? InitialValue { get; init; }
     public bool Required { get; init; }
     public bool ReadOnly { get; init; }
     public IReadOnlyList<ModalComboOption>? Options { get; init; }
+    public decimal MinValue { get; init; } = 0;
+    public decimal MaxValue { get; init; } = 9999999999m;
+    public int DecimalPlaces { get; init; } = 2;
+    public string? Placeholder { get; init; }
 }
 
 /// <summary>
-/// Resizable modal dialog generator with built-in required-field validation,
-/// backend ValidationErrors mapping onto <see cref="ErrorProvider"/>, and async duplicate-submit prevention.
+/// AntdUI Borderless Window modal dialog supporting typed inputs, inline field validation,
+/// API validation error mapping, loading submit states, and Light/Dark theming.
 /// </summary>
-public sealed class ModalFormDialog : Form
+public sealed class ModalFormDialog : AntdUI.Window, IThemeAware
 {
-    private readonly ErrorProvider _errorProvider = new();
     private readonly Dictionary<string, Control> _inputs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Label> _fieldErrors = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ModalFieldSpec> _specs = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Func<IReadOnlyDictionary<string, object?>, Task>? _asyncSubmit;
-    private readonly Label _bannerErrorLabel;
-    private readonly Button _saveBtn;
+    private readonly Func<IReadOnlyDictionary<string, object?>, Task>? _onSubmitAsync;
+    private readonly AntdUI.PageHeader _header;
+    private readonly AntdUI.Alert _bannerAlert;
+    private readonly AntdUI.Button _saveBtn;
+    private readonly AntdUI.Button _cancelBtn;
+    private readonly System.Windows.Forms.Panel _footer;
 
     public ModalFormDialog(
         string title,
-        IReadOnlyList<ModalFieldSpec> fields,
-        Func<IReadOnlyDictionary<string, object?>, Task>? asyncSubmit = null,
-        string? submitText = null)
+        IEnumerable<ModalFieldSpec> fields,
+        Func<IReadOnlyDictionary<string, object?>, Task>? onSubmitAsync = null,
+        string? submitText = null,
+        int width = 580)
     {
-        _asyncSubmit = asyncSubmit;
-
+        _onSubmitAsync = onSubmitAsync;
         Text = title;
         StartPosition = FormStartPosition.CenterParent;
-        MinimumSize = new Size(460, 260);
-        Size = new Size(540, Math.Clamp(165 + fields.Count * 46, 260, 680));
-        BackColor = Color.White;
-        Font = AppTheme.BodyFont;
+        FormBorderStyle = FormBorderStyle.None;
+        MinimizeBox = false;
+        MaximizeBox = false;
+        ShowInTaskbar = false;
+        Resizable = true;
+        Size = new Size(width, Math.Clamp(220 + fields.Count() * 58, 300, 740));
+        Mode = AppTheme.IsDark ? TAMode.Dark : TAMode.Light;
 
-        var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(18) };
+        _header = new AntdUI.PageHeader
+        {
+            Dock = DockStyle.Top,
+            Height = 52,
+            Text = title,
+            Font = AppTheme.SectionTitleFont,
+            CancelButton = true,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            DividerShow = true,
+            DividerThickness = 1F,
+            DragMove = true
+        };
+
+        _bannerAlert = new AntdUI.Alert
+        {
+            Dock = DockStyle.Top,
+            Visible = false,
+            Height = 46,
+            Icon = TType.Error,
+            Font = AppTheme.SmallFont,
+            BorderWidth = 0F,
+            Radius = 0
+        };
+
+        var scroll = new System.Windows.Forms.Panel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            Padding = new Padding(20, 14, 20, 12),
+            BackColor = Color.Transparent
+        };
+
         var table = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
             AutoSize = true,
             ColumnCount = 2,
-            Margin = new Padding(0)
+            BackColor = Color.Transparent
         };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36F));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64F));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 165));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        _bannerErrorLabel = new Label
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            MaximumSize = new Size(490, 0),
-            ForeColor = AppTheme.DangerRed,
-            BackColor = Color.FromArgb(254, 242, 242),
-            Padding = new Padding(10),
-            Visible = false
-        };
-
-        int row = 0;
+        var row = 0;
         foreach (var field in fields)
         {
             _specs[field.Key] = field;
             var lbl = new Label
             {
                 Text = field.Required ? $"{field.Label} *" : field.Label,
-                AutoSize = true,
-                ForeColor = AppTheme.TextSecondary,
                 Font = AppTheme.BodyBoldFont,
-                Margin = new Padding(0, 8, 8, 4)
+                TextAlign = ContentAlignment.TopLeft,
+                AutoSize = false,
+                Height = 32,
+                Padding = new Padding(0, 8, 8, 0),
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent
             };
+
+            var inputWrap = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = new Padding(0, 4, 4, 8),
+                BackColor = Color.Transparent
+            };
+            inputWrap.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            inputWrap.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            inputWrap.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
             var input = CreateInputControl(field);
             _inputs[field.Key] = input;
 
+            var errLabel = new Label
+            {
+                AutoSize = true,
+                Visible = false,
+                Font = AppTheme.SmallFont,
+                ForeColor = AppTheme.DangerRed,
+                Margin = new Padding(2, 2, 0, 0),
+                BackColor = Color.Transparent
+            };
+            _fieldErrors[field.Key] = errLabel;
+
+            inputWrap.Controls.Add(input, 0, 0);
+            inputWrap.Controls.Add(errLabel, 0, 1);
+
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             table.Controls.Add(lbl, 0, row);
-            table.Controls.Add(input, 1, row);
+            table.Controls.Add(inputWrap, 1, row);
             row++;
         }
 
         scroll.Controls.Add(table);
 
-        var footer = new FlowLayoutPanel
+        _footer = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 52,
-            FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(16, 8, 16, 8),
-            BackColor = AppTheme.RowAltBg
+            Height = 56,
+            Padding = new Padding(18, 10, 18, 10)
         };
 
-        var cancelBtn = AppTheme.CreateSecondaryButton(AppStrings.T("Cancel"), 96);
-        cancelBtn.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
+        var btnFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            BackColor = Color.Transparent
+        };
 
-        _saveBtn = AppTheme.CreatePrimaryButton(submitText ?? AppStrings.T("Save"), 130);
+        _cancelBtn = AppTheme.CreateSecondaryButton(AppStrings.T("Cancel"), 98);
+        _cancelBtn.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
+
+        _saveBtn = AppTheme.CreatePrimaryButton(submitText ?? AppStrings.T("Save"), 136);
         _saveBtn.Click += async (_, _) => await HandleSubmitAsync();
 
-        footer.Controls.Add(cancelBtn);
-        footer.Controls.Add(_saveBtn);
+        btnFlow.Controls.Add(_saveBtn);
+        btnFlow.Controls.Add(_cancelBtn);
+        _footer.Controls.Add(btnFlow);
 
         Controls.Add(scroll);
-        Controls.Add(_bannerErrorLabel);
-        Controls.Add(footer);
-        AcceptButton = _saveBtn;
+        Controls.Add(_bannerAlert);
+        Controls.Add(_footer);
+        Controls.Add(_header);
+
+        CancelButton = _cancelBtn;
+        ApplyTheme();
     }
 
     public IReadOnlyDictionary<string, object?> Values => ReadValues();
@@ -145,83 +219,200 @@ public sealed class ModalFormDialog : Form
         switch (f.Kind)
         {
             case ModalFieldKind.Password:
-                return new TextBox { Dock = DockStyle.Fill, UseSystemPasswordChar = true, Text = f.InitialValue?.ToString() ?? string.Empty, Enabled = !f.ReadOnly, Margin = new Padding(0, 4, 16, 6) };
+                return new AntdUI.Input
+                {
+                    Dock = DockStyle.Fill,
+                    Height = 34,
+                    Radius = 6,
+                    UseSystemPasswordChar = true,
+                    Text = f.InitialValue?.ToString() ?? string.Empty,
+                    ReadOnly = f.ReadOnly,
+                    PlaceholderText = f.Placeholder ?? "••••••••",
+                    Font = AppTheme.BodyFont
+                };
+
             case ModalFieldKind.Multiline:
-                return new TextBox { Dock = DockStyle.Fill, Multiline = true, Height = 64, ScrollBars = ScrollBars.Vertical, Text = f.InitialValue?.ToString() ?? string.Empty, ReadOnly = f.ReadOnly, Margin = new Padding(0, 4, 16, 6) };
+                return new AntdUI.Input
+                {
+                    Dock = DockStyle.Fill,
+                    Multiline = true,
+                    WordWrap = true,
+                    Height = 76,
+                    Radius = 6,
+                    Text = f.InitialValue?.ToString() ?? string.Empty,
+                    ReadOnly = f.ReadOnly,
+                    PlaceholderText = f.Placeholder ?? string.Empty,
+                    Font = AppTheme.BodyFont
+                };
+
             case ModalFieldKind.Decimal:
-                var dec = new NumericUpDown { Dock = DockStyle.Fill, DecimalPlaces = 2, Maximum = 999_999_999_999m, Minimum = -999_999_999m, Enabled = !f.ReadOnly, Margin = new Padding(0, 4, 16, 6) };
-                if (f.InitialValue != null && decimal.TryParse(f.InitialValue.ToString(), out var dv)) dec.Value = Math.Clamp(dv, dec.Minimum, dec.Maximum);
-                return dec;
             case ModalFieldKind.Integer:
-                var num = new NumericUpDown { Dock = DockStyle.Fill, DecimalPlaces = 0, Maximum = 999_999_999m, Minimum = -999_999m, Enabled = !f.ReadOnly, Margin = new Padding(0, 4, 16, 6) };
-                if (f.InitialValue != null && decimal.TryParse(f.InitialValue.ToString(), out var iv)) num.Value = Math.Clamp(iv, num.Minimum, num.Maximum);
+                var num = new AntdUI.InputNumber
+                {
+                    Dock = DockStyle.Fill,
+                    Height = 34,
+                    Radius = 6,
+                    Minimum = f.MinValue,
+                    Maximum = f.MaxValue,
+                    DecimalPlaces = f.Kind == ModalFieldKind.Integer ? 0 : f.DecimalPlaces,
+                    ThousandsSeparator = f.Kind == ModalFieldKind.Decimal,
+                    Enabled = !f.ReadOnly,
+                    Font = AppTheme.BodyFont
+                };
+                if (f.InitialValue != null && decimal.TryParse(f.InitialValue.ToString(), out var initNum))
+                    num.Value = Math.Clamp(initNum, f.MinValue, f.MaxValue);
                 return num;
+
             case ModalFieldKind.Date:
-                var dtp = new DateTimePicker { Dock = DockStyle.Fill, Format = DateTimePickerFormat.Short, Enabled = !f.ReadOnly, Margin = new Padding(0, 4, 16, 6) };
-                if (f.InitialValue is DateTime dtVal) dtp.Value = dtVal;
-                else if (f.InitialValue is DateOnly doVal) dtp.Value = doVal.ToDateTime(TimeOnly.MinValue);
-                return dtp;
+                DateTime initDate = f.InitialValue switch
+                {
+                    DateTime dt => dt,
+                    DateOnly dOnly => dOnly.ToDateTime(TimeOnly.MinValue),
+                    _ => DateTime.Today
+                };
+                return new AntdUI.DatePicker
+                {
+                    Dock = DockStyle.Fill,
+                    Height = 34,
+                    Radius = 6,
+                    Format = "dd/MM/yyyy",
+                    Value = initDate,
+                    Enabled = !f.ReadOnly,
+                    Font = AppTheme.BodyFont
+                };
+
             case ModalFieldKind.ComboBox:
-                var cb = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, Enabled = !f.ReadOnly, Margin = new Padding(0, 4, 16, 6) };
+                var select = new AntdUI.Select
+                {
+                    Dock = DockStyle.Fill,
+                    Height = 34,
+                    Radius = 6,
+                    List = true,
+                    Enabled = !f.ReadOnly,
+                    PlaceholderText = f.Placeholder ?? "-- Chọn giá trị --",
+                    Font = AppTheme.BodyFont
+                };
                 if (f.Options != null)
                 {
-                    foreach (var opt in f.Options) cb.Items.Add(opt);
-                    var match = f.Options.FirstOrDefault(o => Equals(o.Value, f.InitialValue) || string.Equals(o.Value?.ToString(), f.InitialValue?.ToString(), StringComparison.OrdinalIgnoreCase));
-                    if (match != null) cb.SelectedItem = match;
-                    else if (cb.Items.Count > 0) cb.SelectedIndex = 0;
+                    int matchedIdx = -1;
+                    for (int i = 0; i < f.Options.Count; i++)
+                    {
+                        var opt = f.Options[i];
+                        select.Items.Add(new SelectItem(opt.Display, opt.Value));
+                        if (matchedIdx < 0 && f.InitialValue != null &&
+                            (Equals(opt.Value, f.InitialValue) ||
+                             string.Equals(opt.Value?.ToString(), f.InitialValue.ToString(), StringComparison.OrdinalIgnoreCase)))
+                        {
+                            matchedIdx = i;
+                        }
+                    }
+
+                    if (matchedIdx >= 0)
+                        select.SelectedIndex = matchedIdx;
+                    else if (f.Options.Count > 0 && f.Required)
+                        select.SelectedIndex = 0;
                 }
-                return cb;
+                return select;
+
             case ModalFieldKind.CheckBox:
-                return new CheckBox { Checked = f.InitialValue is true, AutoSize = true, Enabled = !f.ReadOnly, Margin = new Padding(0, 8, 16, 6) };
+                return new AntdUI.Checkbox
+                {
+                    Dock = DockStyle.Fill,
+                    Height = 32,
+                    Text = f.Placeholder ?? f.Label,
+                    Checked = f.InitialValue is bool b && b,
+                    Enabled = !f.ReadOnly,
+                    Font = AppTheme.BodyFont
+                };
+
             default:
-                return new TextBox { Dock = DockStyle.Fill, Text = f.InitialValue?.ToString() ?? string.Empty, ReadOnly = f.ReadOnly, Margin = new Padding(0, 4, 16, 6) };
+                return new AntdUI.Input
+                {
+                    Dock = DockStyle.Fill,
+                    Height = 34,
+                    Radius = 6,
+                    AllowClear = !f.ReadOnly,
+                    Text = f.InitialValue?.ToString() ?? string.Empty,
+                    ReadOnly = f.ReadOnly,
+                    PlaceholderText = f.Placeholder ?? string.Empty,
+                    Font = AppTheme.BodyFont
+                };
         }
     }
 
-    private Dictionary<string, object?> ReadValues()
+    private IReadOnlyDictionary<string, object?> ReadValues()
     {
         var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, ctrl) in _inputs)
         {
             dict[key] = ctrl switch
             {
-                TextBox tb => tb.Text.Trim(),
-                NumericUpDown n => n.DecimalPlaces == 0 ? (long)n.Value : n.Value,
-                DateTimePicker dt => dt.Value,
-                ComboBox cb => (cb.SelectedItem as ModalComboOption)?.Value,
-                CheckBox chk => chk.Checked,
-                _ => null
+                AntdUI.InputNumber num => _specs[key].Kind == ModalFieldKind.Integer ? (int)num.Value : num.Value,
+                AntdUI.DatePicker dp => dp.Value ?? DateTime.Today,
+                AntdUI.Select sel => ReadSelectValue(sel),
+                AntdUI.Checkbox cb => cb.Checked,
+                AntdUI.Input txt => txt.Text.Trim(),
+                _ => ctrl.Text.Trim()
             };
         }
         return dict;
     }
 
+    private static object? ReadSelectValue(AntdUI.Select sel)
+    {
+        if (sel.SelectedIndex >= 0 && sel.SelectedIndex < sel.Items.Count && sel.Items[sel.SelectedIndex] is SelectItem item)
+            return item.Tag;
+        return sel.SelectedValue;
+    }
+
+    private void ClearErrors()
+    {
+        _bannerAlert.Visible = false;
+        foreach (var (key, errLbl) in _fieldErrors)
+        {
+            errLbl.Visible = false;
+            if (_inputs.TryGetValue(key, out var ctrl) && ctrl is AntdUI.Input inp)
+                inp.Status = TType.None;
+        }
+    }
+
+    private void SetFieldError(string key, string message)
+    {
+        if (_fieldErrors.TryGetValue(key, out var lbl))
+        {
+            lbl.Text = message;
+            lbl.Visible = true;
+        }
+        if (_inputs.TryGetValue(key, out var ctrl) && ctrl is AntdUI.Input inp)
+            inp.Status = TType.Error;
+    }
+
     private async Task HandleSubmitAsync()
     {
-        _errorProvider.Clear();
-        _bannerErrorLabel.Visible = false;
+        ClearErrors();
+        var valid = true;
 
         foreach (var (key, spec) in _specs)
         {
             if (!spec.Required) continue;
             var ctrl = _inputs[key];
-            bool empty = ctrl switch
+            var isMissing = ctrl switch
             {
-                TextBox tb => string.IsNullOrWhiteSpace(tb.Text),
-                ComboBox cb => (cb.SelectedItem as ModalComboOption)?.Value == null,
+                AntdUI.Select sel => ReadSelectValue(sel) == null,
+                AntdUI.Input txt => string.IsNullOrWhiteSpace(txt.Text),
                 _ => false
             };
 
-            if (empty)
+            if (isMissing)
             {
-                _errorProvider.SetError(ctrl, $"{spec.Label} là bắt buộc.");
-                _bannerErrorLabel.Text = $"Vui lòng nhập đầy đủ trường bắt buộc ({spec.Label}).";
-                _bannerErrorLabel.Visible = true;
-                return;
+                SetFieldError(key, "Trường này là bắt buộc.");
+                valid = false;
             }
         }
 
-        if (_asyncSubmit == null)
+        if (!valid) return;
+
+        if (_onSubmitAsync == null)
         {
             DialogResult = DialogResult.OK;
             Close();
@@ -230,37 +421,57 @@ public sealed class ModalFormDialog : Form
 
         try
         {
+            _saveBtn.Loading = true;
             _saveBtn.Enabled = false;
+            _cancelBtn.Enabled = false;
             UseWaitCursor = true;
-            await _asyncSubmit(ReadValues());
+
+            await _onSubmitAsync(ReadValues());
             DialogResult = DialogResult.OK;
             Close();
         }
-        catch (ApiException ex)
+        catch (ApiException apiEx)
         {
-            if (ex.ValidationErrors != null)
+            var msg = UiAsyncRunner.FormatApiErrorMessage(apiEx);
+            _bannerAlert.Text = msg;
+            _bannerAlert.Visible = true;
+
+            if (apiEx.ValidationErrors != null)
             {
-                foreach (var (field, errs) in ex.ValidationErrors)
+                foreach (var kv in apiEx.ValidationErrors)
                 {
-                    if (_inputs.TryGetValue(field, out var target))
-                        _errorProvider.SetError(target, string.Join("; ", errs));
+                    var match = _inputs.Keys.FirstOrDefault(k => string.Equals(k, kv.Key, StringComparison.OrdinalIgnoreCase));
+                    if (match != null)
+                        SetFieldError(match, string.Join("; ", kv.Value));
                 }
             }
-            _bannerErrorLabel.Text = UiAsyncRunner.FormatApiErrorMessage(ex);
-            _bannerErrorLabel.Visible = true;
         }
         catch (Exception ex)
         {
-            _bannerErrorLabel.Text = ex.Message;
-            _bannerErrorLabel.Visible = true;
+            _bannerAlert.Text = ex.Message;
+            _bannerAlert.Visible = true;
         }
         finally
         {
             if (!IsDisposed)
             {
                 UseWaitCursor = false;
+                _saveBtn.Loading = false;
                 _saveBtn.Enabled = true;
+                _cancelBtn.Enabled = true;
             }
         }
+    }
+
+    public void ApplyTheme()
+    {
+        Mode = AppTheme.IsDark ? TAMode.Dark : TAMode.Light;
+        BackColor = AppTheme.SurfaceBg;
+        ForeColor = AppTheme.TextPrimary;
+        BorderColor = AppTheme.BorderSubtle;
+        _header.BackColor = AppTheme.CardBg;
+        _header.ForeColor = AppTheme.TextPrimary;
+        _header.DividerColor = AppTheme.BorderSubtle;
+        _footer.BackColor = AppTheme.RowAltBg;
     }
 }

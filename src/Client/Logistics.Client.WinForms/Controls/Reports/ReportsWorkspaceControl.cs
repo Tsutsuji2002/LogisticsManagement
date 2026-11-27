@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Reporting;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -8,25 +9,33 @@ using Microsoft.Extensions.Logging;
 
 namespace Logistics.Client.WinForms.Controls.Reports;
 
-public sealed class ReportsWorkspaceControl : ModuleViewBase
+public sealed class ReportsWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly IReportingApiClient _reportingApi;
     private readonly IAuthorizationService _auth;
     private readonly IBranchContextService _branchContext;
     private readonly ILogger<ReportsWorkspaceControl> _logger;
 
-    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly TabPage _tabExplorer = new("Báo cáo chi tiết & Xuất CSV") { BackColor = AppTheme.SurfaceBg };
-    private readonly TabPage _tabScheduled = new("Lịch báo cáo & Tác vụ nền") { BackColor = AppTheme.SurfaceBg };
+    private readonly AntdUI.Tabs _tabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.TabPage _tabExplorer = new() { Text = "Báo cáo chi tiết & Xuất CSV" };
+    private readonly AntdUI.TabPage _tabScheduled = new() { Text = "Lịch báo cáo & Tác vụ nền" };
 
-    private ComboBox _reportTypeCombo = null!;
-    private DateTimePicker _startDatePicker = null!;
-    private DateTimePicker _endDatePicker = null!;
-    private CheckBox _useDatesCheck = null!;
-    private CheckBox _lowStockCheck = null!;
+    private AntdUI.Select _reportTypeCombo = null!;
+    private AntdUI.DatePicker _startDatePicker = null!;
+    private AntdUI.DatePicker _endDatePicker = null!;
+    private AntdUI.Checkbox _useDatesCheck = null!;
+    private AntdUI.Checkbox _lowStockCheck = null!;
     private PagedDataGridControl _reportGrid = null!;
 
-    private readonly Label _healthBannerLabel = new() { Dock = DockStyle.Top, Height = 52, BackColor = AppTheme.CardBg, Padding = new Padding(14, 10, 14, 6), Font = AppTheme.BodyBoldFont };
+    private readonly AntdUI.Alert _healthBannerLabel = new()
+    {
+        Dock = DockStyle.Top,
+        Height = 46,
+        Radius = 6,
+        Icon = TType.Info,
+        Font = AppTheme.BodyBoldFont,
+        Margin = new Padding(0, 0, 0, 8)
+    };
     private PagedDataGridControl _scheduledGrid = null!;
     private PagedDataGridControl _jobsGrid = null!;
     private PagedDataGridControl _outboxGrid = null!;
@@ -45,19 +54,20 @@ public sealed class ReportsWorkspaceControl : ModuleViewBase
         BuildExplorerTab();
         BuildScheduledAndBackgroundTab();
 
-        if (HasAnyReportPermission()) _tabs.TabPages.Add(_tabExplorer);
+        if (HasAnyReportPermission()) _tabs.Pages.Add(_tabExplorer);
         if (_auth.HasAnyPermission(ClientPermissions.Reporting.ScheduleManage, ClientPermissions.Notification.ReportsRead, ClientPermissions.BackgroundProcessing.JobsRead))
-            _tabs.TabPages.Add(_tabScheduled);
+            _tabs.Pages.Add(_tabScheduled);
 
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
+        ApplyTheme();
     }
 
     public void SelectSection(string navKey)
     {
-        if (navKey == "Reports.Scheduled" && _tabs.TabPages.Contains(_tabScheduled))
+        if (navKey == "Reports.Scheduled" && _tabs.Pages.Contains(_tabScheduled))
             _tabs.SelectedTab = _tabScheduled;
-        else if (_tabs.TabPages.Contains(_tabExplorer))
+        else if (_tabs.Pages.Contains(_tabExplorer))
             _tabs.SelectedTab = _tabExplorer;
     }
 
@@ -71,16 +81,16 @@ public sealed class ReportsWorkspaceControl : ModuleViewBase
     {
         _reportGrid = new PagedDataGridControl("Kho báo cáo điều hành", "Dữ liệu lọc & phân trang tại Server. Hỗ trợ xuất CSV trực tiếp từ API /reports/export.");
 
-        _reportTypeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240, Margin = new Padding(0, 4, 8, 0) };
+        _reportTypeCombo = new AntdUI.Select { Width = 250, Height = 32, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 4) };
         PopulateReportSelector();
         _reportTypeCombo.SelectedIndexChanged += (_, _) => _reportGrid.ResetAndReload();
 
-        _useDatesCheck = new CheckBox { Text = "Lọc ngày", AutoSize = true, Checked = true, Margin = new Padding(0, 8, 4, 0) };
-        _startDatePicker = new DateTimePicker { Width = 115, Format = DateTimePickerFormat.Short, Value = DateTime.Today.AddDays(-30), Margin = new Padding(0, 4, 4, 0) };
-        _endDatePicker = new DateTimePicker { Width = 115, Format = DateTimePickerFormat.Short, Value = DateTime.Today, Margin = new Padding(0, 4, 6, 0) };
-        _useDatesCheck.CheckedChanged += (_, _) => { _startDatePicker.Enabled = _useDatesCheck.Checked; _endDatePicker.Enabled = _useDatesCheck.Checked; };
+        _useDatesCheck = new AntdUI.Checkbox { Text = "Lọc ngày", AutoSize = true, Checked = true, Margin = new Padding(0, 6, 4, 0), Font = AppTheme.BodyFont };
+        _startDatePicker = new AntdUI.DatePicker { Width = 132, Height = 32, Radius = 6, Format = "dd/MM/yyyy", Value = DateTime.Today.AddDays(-30), Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 4, 4) };
+        _endDatePicker = new AntdUI.DatePicker { Width = 132, Height = 32, Radius = 6, Format = "dd/MM/yyyy", Value = DateTime.Today, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 6, 4) };
+        _useDatesCheck.CheckedChanged += (_, e) => { _startDatePicker.Enabled = e.Value; _endDatePicker.Enabled = e.Value; };
 
-        _lowStockCheck = new CheckBox { Text = "Chỉ dưới mức tối thiểu", AutoSize = true, Margin = new Padding(4, 8, 8, 0) };
+        _lowStockCheck = new AntdUI.Checkbox { Text = "Chỉ dưới mức tối thiểu", AutoSize = true, Margin = new Padding(4, 6, 8, 0), Font = AppTheme.BodyFont };
         _lowStockCheck.CheckedChanged += (_, _) => _reportGrid.ResetAndReload();
 
         _reportGrid.AddFilterControl(_reportTypeCombo);
@@ -134,15 +144,16 @@ public sealed class ReportsWorkspaceControl : ModuleViewBase
         }
 
         _reportTypeCombo.Items.Clear();
-        _reportTypeCombo.Items.AddRange([.. items]);
+        foreach (var opt in items)
+            _reportTypeCombo.Items.Add(new SelectItem(opt.Display, opt.Value));
         if (_reportTypeCombo.Items.Count > 0) _reportTypeCombo.SelectedIndex = 0;
     }
 
     private void BuildScheduledAndBackgroundTab()
     {
-        var innerTabs = new TabControl { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
+        var innerTabs = AppTheme.CreateAntdTabs();
 
-        var schedTab = new TabPage("Lịch báo cáo tự động (Scheduled Reports)");
+        var schedTab = new AntdUI.TabPage { Text = "Lịch báo cáo tự động (Scheduled Reports)" };
         _scheduledGrid = new PagedDataGridControl("Lịch gửi báo cáo", "Quản lý lịch Cron chạy báo cáo và kích hoạt chạy thủ công.", showSearch: false);
         if (_auth.HasPermission(ClientPermissions.Reporting.ScheduleManage) || _auth.HasPermission(ClientPermissions.Notification.ReportsCreate))
         {
@@ -156,7 +167,7 @@ public sealed class ReportsWorkspaceControl : ModuleViewBase
         _scheduledGrid.ReloadRequested += async (_, _) => await LoadScheduledAndBackgroundAsync();
         schedTab.Controls.Add(_scheduledGrid);
 
-        var jobsTab = new TabPage("Tác vụ nền (BackgroundJobs)");
+        var jobsTab = new AntdUI.TabPage { Text = "Tác vụ nền (BackgroundJobs)" };
         _jobsGrid = new PagedDataGridControl("Nhật ký BackgroundJobLogs", "Giám sát tình trạng tác vụ chạy nền và thử lại khi lỗi.", showSearch: false);
         if (_auth.HasPermission(ClientPermissions.BackgroundProcessing.JobsRetry))
         {
@@ -176,7 +187,7 @@ public sealed class ReportsWorkspaceControl : ModuleViewBase
         _jobsGrid.ReloadRequested += async (_, _) => await LoadScheduledAndBackgroundAsync();
         jobsTab.Controls.Add(_jobsGrid);
 
-        var outboxTab = new TabPage("Hàng đợi sự kiện (OutboxMessages)");
+        var outboxTab = new AntdUI.TabPage { Text = "Hàng đợi sự kiện (OutboxMessages)" };
         _outboxGrid = new PagedDataGridControl("OutboxMessages", "Theo dõi sự kiện tích hợp đang chờ hoặc thất bại.", showSearch: false);
         if (_auth.HasPermission(ClientPermissions.BackgroundProcessing.OperationsManage))
         {
@@ -196,18 +207,29 @@ public sealed class ReportsWorkspaceControl : ModuleViewBase
         _outboxGrid.ReloadRequested += async (_, _) => await LoadScheduledAndBackgroundAsync();
         outboxTab.Controls.Add(_outboxGrid);
 
-        innerTabs.TabPages.AddRange([schedTab, jobsTab, outboxTab]);
+        innerTabs.Pages.AddRange([schedTab, jobsTab, outboxTab]);
         _tabScheduled.Controls.Add(innerTabs);
         _tabScheduled.Controls.Add(_healthBannerLabel);
     }
 
     private ReportFilterRequest BuildCurrentFilter() => new()
     {
-        StartDate = _useDatesCheck.Checked ? DateOnly.FromDateTime(_startDatePicker.Value.Date) : null,
-        EndDate = _useDatesCheck.Checked ? DateOnly.FromDateTime(_endDatePicker.Value.Date) : null,
+        StartDate = _useDatesCheck.Checked ? DateOnly.FromDateTime((_startDatePicker.Value ?? DateTime.Today.AddDays(-30)).Date) : null,
+        EndDate = _useDatesCheck.Checked ? DateOnly.FromDateTime((_endDatePicker.Value ?? DateTime.Today).Date) : null,
         BranchId = _branchContext.ActiveBranchId,
         Search = _reportGrid.SearchText
     };
+
+    private string? GetSelectedReportType()
+    {
+        if (_reportTypeCombo.SelectedIndex >= 0 &&
+            _reportTypeCombo.SelectedIndex < _reportTypeCombo.Items.Count &&
+            _reportTypeCombo.Items[_reportTypeCombo.SelectedIndex] is SelectItem item)
+        {
+            return item.Tag?.ToString();
+        }
+        return _reportTypeCombo.SelectedValue?.ToString();
+    }
 
     protected override async Task RefreshDataAsync()
     {
@@ -217,7 +239,7 @@ public sealed class ReportsWorkspaceControl : ModuleViewBase
 
     private async Task LoadExplorerAsync()
     {
-        var type = (_reportTypeCombo.SelectedItem as ModalComboOption)?.Value?.ToString();
+        var type = GetSelectedReportType();
         if (string.IsNullOrWhiteSpace(type)) return;
 
         _reportGrid.SetLoading(true);
@@ -252,7 +274,7 @@ public sealed class ReportsWorkspaceControl : ModuleViewBase
 
     private async Task ExportSelectedReportCsvAsync(Control triggerBtn)
     {
-        var type = (_reportTypeCombo.SelectedItem as ModalComboOption)?.Value?.ToString();
+        var type = GetSelectedReportType();
         if (string.IsNullOrWhiteSpace(type)) return;
 
         await UiAsyncRunner.RunSafeAsync(this, async () =>
@@ -320,5 +342,12 @@ public sealed class ReportsWorkspaceControl : ModuleViewBase
             UiAsyncRunner.ShowInfo(this, $"Trạng thái: {res.Status}\nThông điệp: {res.Message}", "Kết quả chạy lịch báo cáo");
             await LoadScheduledAndBackgroundAsync();
         }, null, null, _logger);
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
+        _useDatesCheck.ForeColor = AppTheme.TextPrimary;
+        _lowStockCheck.ForeColor = AppTheme.TextPrimary;
     }
 }

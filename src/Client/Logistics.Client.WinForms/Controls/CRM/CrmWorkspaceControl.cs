@@ -1,3 +1,4 @@
+using AntdUI;
 using Logistics.Client.Application.Contracts.Crm;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Client.Application.Permissions;
@@ -9,7 +10,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Logistics.Client.WinForms.Controls.CRM;
 
-public sealed class CrmWorkspaceControl : ModuleViewBase
+/// <summary>
+/// AntdUI CRM workspace for managing Customers, Contacts, Addresses, Contracts, and Pricing Rules.
+/// </summary>
+public sealed class CrmWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly ICrmApiClient _crmApi;
     private readonly IAuthorizationService _auth;
@@ -17,13 +21,12 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
     private readonly ILogger<CrmWorkspaceControl> _logger;
 
     private readonly PagedDataGridControl _customersGrid;
-    private readonly TabControl _detailTabs = new() { Dock = DockStyle.Fill, Font = AppTheme.BodyFont };
-    private readonly DataGridView _contactsGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _addressesGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _contractsGrid = new() { Dock = DockStyle.Fill };
-    private readonly DataGridView _pricingGrid = new() { Dock = DockStyle.Fill };
-    private readonly Label _overviewLabel = new() { Dock = DockStyle.Top, Height = 28, Font = AppTheme.SmallFont, ForeColor = AppTheme.TextSecondary, Padding = new Padding(16, 6, 16, 0) };
-
+    private readonly AntdUI.Tabs _detailTabs = AppTheme.CreateAntdTabs();
+    private readonly AntdUI.Table _contactsTable = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _addressesTable = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _contractsTable = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Table _pricingTable = AppTheme.CreateAntdTable();
+    private readonly AntdUI.Alert _overviewAlert;
     private CustomerDto? _selectedCustomer;
 
     public CrmWorkspaceControl(
@@ -37,59 +40,73 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
         _branchContext = branchContext;
         _logger = logger;
 
-        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 320, 200, 180);
+        _overviewAlert = new AntdUI.Alert
+        {
+            Dock = DockStyle.Top,
+            Height = 40,
+            Radius = 6,
+            Icon = TType.Info,
+            Font = AppTheme.BodyBoldFont,
+            Text = "Tổng quan khách hàng: Đang tải...",
+            Margin = new Padding(0, 0, 0, 8)
+        };
 
-        _customersGrid = new PagedDataGridControl("Khách hàng (CRM)", "Quản lý hồ sơ khách hàng, liên hệ, địa chỉ, hợp đồng và bảng giá.");
+        _customersGrid = new PagedDataGridControl("Khách hàng (CRM)", "Quản lý hồ sơ khách hàng, liên hệ, địa chỉ, hợp đồng và chính sách giá.");
         if (_auth.HasPermission(ClientPermissions.Crm.CustomersCreate))
         {
-            var addBtn = AppTheme.CreatePrimaryButton("Thêm KH", 110);
+            var addBtn = AppTheme.CreatePrimaryButton("Thêm KH", 105);
             addBtn.Click += async (_, _) => await CreateOrEditCustomerAsync(null);
             _customersGrid.AddActionButton(addBtn);
         }
         if (_auth.HasPermission(ClientPermissions.Crm.CustomersUpdate))
         {
             var editBtn = AppTheme.CreateSecondaryButton("Sửa KH", 90);
-            editBtn.Click += async (_, _) => { if (_selectedCustomer != null) await CreateOrEditCustomerAsync(_selectedCustomer); };
+            editBtn.Click += async (_, _) =>
+            {
+                var c = _customersGrid.GetSelectedRow<CustomerDto>();
+                if (c != null) await CreateOrEditCustomerAsync(c);
+            };
             _customersGrid.AddActionButton(editBtn);
         }
         if (_auth.HasPermission(ClientPermissions.Crm.CustomersStatusManage))
         {
-            var toggleBtn = AppTheme.CreateDangerButton("Bật/Tắt KH", 110);
-            toggleBtn.Click += async (_, _) =>
+            var stBtn = AppTheme.CreateDangerButton("Bật/Tắt KH", 105);
+            stBtn.Click += async (_, _) =>
             {
-                if (_selectedCustomer == null) return;
+                var c = _customersGrid.GetSelectedRow<CustomerDto>();
+                if (c == null) return;
                 await UiAsyncRunner.RunSafeAsync(this, async () =>
                 {
-                    await _crmApi.ToggleCustomerStatusAsync(_selectedCustomer.Id.ToString(), new UpdateCustomerStatusRequest(!_selectedCustomer.IsActive));
+                    await _crmApi.ToggleCustomerStatusAsync(c.Id.ToString(), new UpdateCustomerStatusRequest(!c.IsActive));
                     await LoadCustomersAsync();
                 }, logger: _logger);
             };
-            _customersGrid.AddActionButton(toggleBtn);
+            _customersGrid.AddActionButton(stBtn);
         }
 
         _customersGrid.ReloadRequested += async (_, _) => await LoadCustomersAsync();
         _customersGrid.SelectionChanged += async (_, _) => await LoadCustomerDetailsAsync();
 
-        split.Panel1.Controls.Add(_customersGrid);
-        split.Panel1.Controls.Add(_overviewLabel);
+        BuildDetailTabs();
 
-        BuildSubTabs();
-        split.Panel2.Padding = new Padding(12, 4, 12, 12);
-        split.Panel2.Controls.Add(_detailTabs);
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 350, 170, 170);
+        split.Panel1.Controls.Add(_customersGrid);
+
+        var detailCard = AppTheme.CreateCardPanel(new Padding(10));
+        detailCard.Dock = DockStyle.Fill;
+        detailCard.Controls.Add(_detailTabs);
+        split.Panel2.Controls.Add(detailCard);
 
         Controls.Add(split);
+        Controls.Add(_overviewAlert);
+        ApplyTheme();
     }
 
-    private void BuildSubTabs()
+    private void BuildDetailTabs()
     {
-        AppTheme.StyleDataGrid(_contactsGrid);
-        AppTheme.StyleDataGrid(_addressesGrid);
-        AppTheme.StyleDataGrid(_contractsGrid);
-        AppTheme.StyleDataGrid(_pricingGrid);
-
         // Contacts
-        var tabContacts = new TabPage("Người liên hệ");
-        var cBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(4) };
+        var tabContacts = new AntdUI.TabPage { Text = "Liên hệ" };
+        var cBar = CreateSubToolbar();
         if (_auth.HasPermission(ClientPermissions.Crm.ContactsCreate))
         {
             var bAdd = AppTheme.CreatePrimaryButton("Thêm liên hệ", 120);
@@ -101,7 +118,7 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             var bPri = AppTheme.CreateSuccessButton("Đặt làm chính", 120);
             bPri.Click += async (_, _) =>
             {
-                var row = _contactsGrid.SelectedRows.Count > 0 ? _contactsGrid.SelectedRows[0].DataBoundItem as CustomerContactDto : null;
+                var row = AppTheme.GetSelectedAntdRow<CustomerContactDto>(_contactsTable);
                 if (row == null || _selectedCustomer == null) return;
                 await UiAsyncRunner.RunSafeAsync(this, async () =>
                 {
@@ -112,7 +129,7 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             var bDel = AppTheme.CreateDangerButton("Xóa", 76);
             bDel.Click += async (_, _) =>
             {
-                var row = _contactsGrid.SelectedRows.Count > 0 ? _contactsGrid.SelectedRows[0].DataBoundItem as CustomerContactDto : null;
+                var row = AppTheme.GetSelectedAntdRow<CustomerContactDto>(_contactsTable);
                 if (row == null || _selectedCustomer == null || !UiAsyncRunner.Confirm(this, $"Xóa liên hệ {row.ContactName}?")) return;
                 await UiAsyncRunner.RunSafeAsync(this, async () =>
                 {
@@ -122,12 +139,12 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             };
             cBar.Controls.AddRange([bPri, bDel]);
         }
-        tabContacts.Controls.Add(_contactsGrid);
+        tabContacts.Controls.Add(_contactsTable);
         tabContacts.Controls.Add(cBar);
 
         // Addresses
-        var tabAddresses = new TabPage("Địa chỉ");
-        var aBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(4) };
+        var tabAddresses = new AntdUI.TabPage { Text = "Địa chỉ" };
+        var aBar = CreateSubToolbar();
         if (_auth.HasPermission(ClientPermissions.Crm.AddressesCreate))
         {
             var bAdd = AppTheme.CreatePrimaryButton("Thêm địa chỉ", 120);
@@ -139,7 +156,7 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             var bDef = AppTheme.CreateSuccessButton("Đặt mặc định", 120);
             bDef.Click += async (_, _) =>
             {
-                var row = _addressesGrid.SelectedRows.Count > 0 ? _addressesGrid.SelectedRows[0].DataBoundItem as CustomerAddressDto : null;
+                var row = AppTheme.GetSelectedAntdRow<CustomerAddressDto>(_addressesTable);
                 if (row == null || _selectedCustomer == null) return;
                 await UiAsyncRunner.RunSafeAsync(this, async () =>
                 {
@@ -149,12 +166,12 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             };
             aBar.Controls.Add(bDef);
         }
-        tabAddresses.Controls.Add(_addressesGrid);
+        tabAddresses.Controls.Add(_addressesTable);
         tabAddresses.Controls.Add(aBar);
 
         // Contracts
-        var tabContracts = new TabPage("Hợp đồng");
-        var ctBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(4) };
+        var tabContracts = new AntdUI.TabPage { Text = "Hợp đồng" };
+        var ctBar = CreateSubToolbar();
         if (_auth.HasPermission(ClientPermissions.Crm.ContractsCreate))
         {
             var bAdd = AppTheme.CreatePrimaryButton("Thêm hợp đồng", 130);
@@ -166,7 +183,7 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             var bAct = AppTheme.CreateSuccessButton("Kích hoạt HĐ", 115);
             bAct.Click += async (_, _) =>
             {
-                var row = _contractsGrid.SelectedRows.Count > 0 ? _contractsGrid.SelectedRows[0].DataBoundItem as CustomerContractDto : null;
+                var row = AppTheme.GetSelectedAntdRow<CustomerContractDto>(_contractsTable);
                 if (row == null || _selectedCustomer == null) return;
                 await UiAsyncRunner.RunSafeAsync(this, async () =>
                 {
@@ -176,12 +193,12 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             };
             ctBar.Controls.Add(bAct);
         }
-        tabContracts.Controls.Add(_contractsGrid);
+        tabContracts.Controls.Add(_contractsTable);
         tabContracts.Controls.Add(ctBar);
 
         // Pricing Rules
-        var tabPricing = new TabPage("Chính sách giá riêng");
-        var pBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(4) };
+        var tabPricing = new AntdUI.TabPage { Text = "Chính sách giá riêng" };
+        var pBar = CreateSubToolbar();
         if (_auth.HasPermission(ClientPermissions.Crm.PricingRulesCreate))
         {
             var bAdd = AppTheme.CreatePrimaryButton("Thêm chính sách giá", 155);
@@ -193,7 +210,7 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             var bTog = AppTheme.CreateSecondaryButton("Bật/Tắt quy tắc", 130);
             bTog.Click += async (_, _) =>
             {
-                var row = _pricingGrid.SelectedRows.Count > 0 ? _pricingGrid.SelectedRows[0].DataBoundItem as CustomerPricingRuleDto : null;
+                var row = AppTheme.GetSelectedAntdRow<CustomerPricingRuleDto>(_pricingTable);
                 if (row == null || _selectedCustomer == null) return;
                 await UiAsyncRunner.RunSafeAsync(this, async () =>
                 {
@@ -203,11 +220,14 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             };
             pBar.Controls.Add(bTog);
         }
-        tabPricing.Controls.Add(_pricingGrid);
+        tabPricing.Controls.Add(_pricingTable);
         tabPricing.Controls.Add(pBar);
 
-        _detailTabs.TabPages.AddRange([tabContacts, tabAddresses, tabContracts, tabPricing]);
+        _detailTabs.Pages.AddRange([tabContacts, tabAddresses, tabContracts, tabPricing]);
     }
+
+    private static FlowLayoutPanel CreateSubToolbar()
+        => new() { Dock = DockStyle.Top, Height = 44, Padding = new Padding(4), BackColor = Color.Transparent };
 
     protected override Task RefreshDataAsync() => LoadCustomersAsync();
 
@@ -223,7 +243,7 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
             if (_auth.HasPermission(ClientPermissions.Crm.CustomersOverviewRead))
             {
                 var ov = await _crmApi.GetCustomerOverviewAsync();
-                _overviewLabel.Text = $"Tổng KH ({ov.ScopeType}): {ov.TotalCustomers} | Đang hoạt động: {ov.ActiveCustomers} | Doanh nghiệp: {ov.CorporateCustomers} | Có HĐ hiệu lực: {ov.CustomersWithActiveContracts}";
+                _overviewAlert.Text = $"Tổng KH ({ov.ScopeType}): {ov.TotalCustomers} | Đang hoạt động: {ov.ActiveCustomers} | Doanh nghiệp: {ov.CorporateCustomers} | Có HĐ hiệu lực: {ov.CustomersWithActiveContracts}";
             }
         }, logger: _logger, showMessageBoxOnError: false);
         _customersGrid.SetLoading(false);
@@ -237,10 +257,10 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
         await UiAsyncRunner.RunSafeAsync(this, async () =>
         {
             var detail = await _crmApi.GetCustomerDetailAsync(_selectedCustomer.Id.ToString());
-            _contactsGrid.DataSource = detail.Contacts.ToList();
-            _addressesGrid.DataSource = detail.Addresses.ToList();
-            _contractsGrid.DataSource = detail.Contracts.ToList();
-            _pricingGrid.DataSource = detail.PricingRules.ToList();
+            AppTheme.BindAntdTable(_contactsTable, detail.Contacts);
+            AppTheme.BindAntdTable(_addressesTable, detail.Addresses);
+            AppTheme.BindAntdTable(_contractsTable, detail.Contracts);
+            AppTheme.BindAntdTable(_pricingTable, detail.PricingRules);
         }, logger: _logger, showMessageBoxOnError: false);
     }
 
@@ -330,5 +350,10 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
         ], async v => await _crmApi.CreatePricingRuleAsync(_selectedCustomer.Id.ToString(), new CreateCustomerPricingRuleRequest(
             v["Name"]!.ToString()!, (DateTime)v["EffectiveFrom"]!, DiscountPercent: Convert.ToDecimal(v["DiscountPercent"]), FlatDiscountAmount: Convert.ToDecimal(v["FlatDiscountAmount"]), Priority: Convert.ToInt32(v["Priority"]))));
         if (dlg.ShowDialog(this) == DialogResult.OK) await LoadCustomerDetailsAsync();
+    }
+
+    public void ApplyTheme()
+    {
+        BackColor = AppTheme.SurfaceBg;
     }
 }

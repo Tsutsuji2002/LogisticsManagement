@@ -1,95 +1,159 @@
+using System.Drawing.Drawing2D;
+using AntdUI;
 using Logistics.Client.WinForms.Themes;
+using Label = System.Windows.Forms.Label;
 
 namespace Logistics.Client.WinForms.Controls.Common;
 
-public sealed class KpiCardControl : Panel
+/// <summary>
+/// AntdUI Card displaying an enterprise KPI metric with semantic accent indicator.
+/// </summary>
+public sealed class KpiCardControl : AntdUI.Panel, IThemeAware
 {
-    private readonly Panel _accentBar;
     private readonly Label _titleLabel;
     private readonly Label _valueLabel;
     private readonly Label _subtitleLabel;
+    private readonly Color _accentColor;
+    private readonly System.Windows.Forms.Panel _accentStripe;
 
-    public KpiCardControl(string title, string value, string subtitle, Color accentColor)
+    public KpiCardControl(string title, Color accentColor)
+        : this(title, "0", string.Empty, accentColor)
     {
-        BackColor = AppTheme.CardBg;
-        Height = 104;
-        MinimumSize = new Size(180, 96);
-        Margin = new Padding(0, 0, 12, 12);
-        Padding = new Padding(16, 12, 14, 10);
+    }
 
-        _accentBar = new Panel
+    public KpiCardControl(string title, string initialValue, string initialSubtitle, Color accentColor)
+    {
+        _accentColor = accentColor;
+        Radius = 8;
+        BorderWidth = 1F;
+        Margin = new Padding(0, 0, 12, 12);
+        Padding = new Padding(14, 12, 14, 12);
+        MinimumSize = new Size(190, 108);
+        Height = 112;
+
+        _accentStripe = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Left,
-            Width = 5,
-            BackColor = accentColor
+            Width = 4,
+            BackColor = _accentColor,
+            Margin = new Padding(0, 2, 10, 2)
         };
+
+        var stack = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(10, 0, 0, 0),
+            BackColor = Color.Transparent
+        };
+        stack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        stack.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        stack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         _titleLabel = new Label
         {
             Text = title,
             Font = AppTheme.SmallFont,
-            ForeColor = AppTheme.TextMuted,
             AutoSize = true,
-            Location = new Point(16, 12)
+            BackColor = Color.Transparent,
+            Margin = new Padding(0)
         };
 
         _valueLabel = new Label
         {
-            Text = value,
+            Text = initialValue,
             Font = AppTheme.KpiValueFont,
-            ForeColor = AppTheme.TextPrimary,
             AutoSize = true,
-            Location = new Point(14, 34)
+            BackColor = Color.Transparent,
+            Margin = new Padding(0, 4, 0, 2)
         };
 
         _subtitleLabel = new Label
         {
-            Text = subtitle,
+            Text = initialSubtitle,
             Font = AppTheme.SmallFont,
-            ForeColor = AppTheme.TextSecondary,
             AutoSize = true,
-            Location = new Point(16, 74)
+            BackColor = Color.Transparent,
+            Margin = new Padding(0)
         };
 
-        Controls.Add(_accentBar);
-        Controls.Add(_titleLabel);
-        Controls.Add(_valueLabel);
-        Controls.Add(_subtitleLabel);
+        stack.Controls.Add(_titleLabel, 0, 0);
+        stack.Controls.Add(_valueLabel, 0, 1);
+        stack.Controls.Add(_subtitleLabel, 0, 2);
 
-        Paint += (_, e) =>
-        {
-            using var pen = new Pen(AppTheme.BorderSubtle);
-            e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
-        };
+        Controls.Add(stack);
+        Controls.Add(_accentStripe);
+        ApplyTheme();
     }
 
     public void UpdateMetric(string value, string? subtitle = null)
+        => SetData(value, subtitle);
+
+    public void SetData(string value, string? subtitle = null)
     {
         _valueLabel.Text = value;
-        if (subtitle != null) _subtitleLabel.Text = subtitle;
+        _subtitleLabel.Text = subtitle ?? string.Empty;
+    }
+
+    public void ApplyTheme()
+    {
+        Back = AppTheme.CardBg;
+        BorderColor = AppTheme.BorderSubtle;
+        _accentStripe.BackColor = _accentColor;
+        _titleLabel.ForeColor = AppTheme.TextSecondary;
+        _valueLabel.ForeColor = AppTheme.TextPrimary;
+        _subtitleLabel.ForeColor = AppTheme.TextMuted;
+        Invalidate();
     }
 }
 
-public sealed record BarChartDatum(string Label, decimal Value, string? DisplayValue = null, Color? Color = null);
+public sealed record BarChartDatum(string Label, decimal Value, string? DisplayValue = null, Color? Color = null)
+{
+    public BarChartDatum(string label, decimal value, Color? color)
+        : this(label, value, null, color)
+    {
+    }
+}
 
-public sealed class SimpleBarChartControl : Panel
+/// <summary>
+/// Theme-aware horizontal bar chart inside an AntdUI Card container.
+/// </summary>
+public sealed class SimpleBarChartControl : AntdUI.Panel, IThemeAware
 {
     private string _title = string.Empty;
-    private IReadOnlyList<BarChartDatum> _data = [];
+    private IReadOnlyList<BarChartDatum> _data = Array.Empty<BarChartDatum>();
 
-    public SimpleBarChartControl(string title = "")
+    public SimpleBarChartControl()
+        : this(string.Empty)
+    {
+    }
+
+    public SimpleBarChartControl(string title)
     {
         _title = title;
-        BackColor = AppTheme.CardBg;
         DoubleBuffered = true;
-        MinimumSize = new Size(260, 220);
-        Margin = new Padding(0, 0, 12, 12);
+        Radius = 8;
+        BorderWidth = 1F;
+        Padding = new Padding(14);
+        MinimumSize = new Size(280, 220);
+        ApplyTheme();
     }
 
     public void SetData(string title, IReadOnlyList<BarChartDatum> data)
+        => SetSeries(title, data);
+
+    public void SetSeries(string title, IReadOnlyList<BarChartDatum> data)
     {
         _title = title;
-        _data = data;
+        _data = data ?? Array.Empty<BarChartDatum>();
+        Invalidate();
+    }
+
+    public void ApplyTheme()
+    {
+        Back = AppTheme.CardBg;
+        BorderColor = AppTheme.BorderSubtle;
         Invalidate();
     }
 
@@ -97,51 +161,54 @@ public sealed class SimpleBarChartControl : Panel
     {
         base.OnPaint(e);
         var g = e.Graphics;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-        using var borderPen = new Pen(AppTheme.BorderSubtle);
-        g.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
 
         using var titleBrush = new SolidBrush(AppTheme.TextPrimary);
-        g.DrawString(_title, AppTheme.SectionTitleFont, titleBrush, 14, 12);
+        using var textBrush = new SolidBrush(AppTheme.TextSecondary);
+        using var mutedBrush = new SolidBrush(AppTheme.TextMuted);
+        using var trackBrush = new SolidBrush(AppTheme.IsDark ? Color.FromArgb(46, 46, 46) : AppTheme.RowAltBg);
 
-        if (_data.Count == 0 || _data.All(d => d.Value <= 0))
+        g.DrawString(_title, AppTheme.SectionTitleFont, titleBrush, 16, 14);
+
+        if (_data.Count == 0)
         {
-            using var muted = new SolidBrush(AppTheme.TextMuted);
-            g.DrawString("Không có dữ liệu biểu đồ trong phạm vi lọc.", AppTheme.BodyFont, muted, 16, 54);
+            g.DrawString("Không có dữ liệu biểu đồ.", AppTheme.BodyFont, mutedBrush, 16, 48);
             return;
         }
 
-        var maxVal = _data.Max(d => d.Value);
-        if (maxVal <= 0) maxVal = 1;
-
+        var max = Math.Max(1m, _data.Max(d => d.Value));
         var top = 46;
-        var rowHeight = Math.Max(22, Math.Min(32, (Height - 60) / _data.Count));
-        var labelWidth = Math.Min(135, Width / 3);
-        var valueColWidth = 75;
-        var barAreaWidth = Math.Max(40, Width - labelWidth - valueColWidth - 36);
+        var rowHeight = Math.Max(22, Math.Min(34, (Height - top - 16) / Math.Max(1, _data.Count)));
+        var labelWidth = Math.Min(155, Width / 3);
+        var valueWidth = 96;
+        var barAreaWidth = Math.Max(60, Width - labelWidth - valueWidth - 40);
 
-        for (int i = 0; i < _data.Count && top + rowHeight <= Height - 8; i++)
+        for (int i = 0; i < _data.Count; i++)
         {
+            var y = top + i * rowHeight;
+            if (y + rowHeight > Height - 8) break;
+
             var item = _data[i];
-            var ratio = (float)(item.Value / maxVal);
-            var barW = Math.Max(4, (int)(barAreaWidth * ratio));
             var barColor = item.Color ?? AppTheme.PrimaryBlue;
+            var ratio = (double)(item.Value / max);
+            var barWidth = (int)Math.Round(barAreaWidth * Math.Clamp(ratio, 0, 1));
 
-            using var labelBrush = new SolidBrush(AppTheme.TextSecondary);
-            var labelRect = new RectangleF(14, top + 2, labelWidth - 6, rowHeight - 4);
-            g.DrawString(item.Label, AppTheme.SmallFont, labelBrush, labelRect);
+            g.DrawString(Truncate(item.Label, 22), AppTheme.SmallFont, textBrush, new RectangleF(16, y + 4, labelWidth - 8, rowHeight));
+            var trackRect = new Rectangle(16 + labelWidth, y + 6, barAreaWidth, Math.Max(10, rowHeight - 14));
+            g.FillRectangle(trackBrush, trackRect);
 
-            using var trackBrush = new SolidBrush(AppTheme.RowAltBg);
-            g.FillRectangle(trackBrush, labelWidth + 14, top + 4, barAreaWidth, rowHeight - 10);
+            if (barWidth > 0)
+            {
+                using var barBrush = new SolidBrush(barColor);
+                var fillRect = new Rectangle(trackRect.X, trackRect.Y, Math.Max(4, barWidth), trackRect.Height);
+                g.FillRectangle(barBrush, fillRect);
+            }
 
-            using var barBrush = new SolidBrush(barColor);
-            g.FillRectangle(barBrush, labelWidth + 14, top + 4, barW, rowHeight - 10);
-
-            var valText = item.DisplayValue ?? item.Value.ToString("N0");
-            g.DrawString(valText, AppTheme.SmallFont, titleBrush, labelWidth + barAreaWidth + 20, top + 2);
-
-            top += rowHeight;
+            g.DrawString(item.DisplayValue ?? item.Value.ToString("N0"), AppTheme.SmallFont, titleBrush,
+                new RectangleF(16 + labelWidth + barAreaWidth + 8, y + 4, valueWidth - 8, rowHeight));
         }
     }
+
+    private static string Truncate(string input, int maxLen)
+        => input.Length <= maxLen ? input : input[..(maxLen - 1)] + "…";
 }
