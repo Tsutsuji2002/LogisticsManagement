@@ -269,8 +269,8 @@ public static class AppTheme
         };
 
     /// <summary>
-    /// Creates an AntdUI.Splitter with safe deferred PanelMinSize / SplitterDistance clamping
-    /// so horizontal/vertical panes never throw ArgumentOutOfRangeException on initial layout.
+    /// Creates an AntdUI.Splitter with proportional, resize-safe PanelMinSize and SplitterDistance clamping
+    /// so horizontal/vertical panes never throw ArgumentOutOfRangeException or clip during shrink/grow.
     /// </summary>
     public static AntdUI.Splitter CreateSafeSplitContainer(
         Orientation orientation,
@@ -291,37 +291,107 @@ public static class AppTheme
             SplitterBack = BorderSubtle
         };
 
-        var applied = false;
+        var initialized = false;
+        var updating = false;
+        var userRatio = 0.0;
+
         void ApplySafeSizes()
         {
-            if (applied || split.IsDisposed) return;
+            if (updating || split.IsDisposed) return;
 
             var total = orientation == Orientation.Horizontal ? split.Height : split.Width;
             if (total < 160) return;
 
-            var p1Min = Math.Min(panel1MinSize, Math.Max(25, total / 3));
-            var p2Min = Math.Min(panel2MinSize, Math.Max(25, total / 3));
+            var p1Min = Math.Min(panel1MinSize, Math.Max(30, total / 3));
+            var p2Min = Math.Min(panel2MinSize, Math.Max(30, total / 3));
             var maxDist = total - split.SplitterWidth - p2Min;
             if (maxDist <= p1Min) return;
 
+            updating = true;
             try
             {
-                split.Panel1MinSize = p1Min;
-                split.Panel2MinSize = p2Min;
-                split.SplitterDistance = Math.Clamp(desiredSplitterDistance, p1Min, maxDist);
-                applied = true;
+                if (!initialized)
+                {
+                    var initialDist = Math.Clamp(desiredSplitterDistance, p1Min, maxDist);
+                    split.Panel1MinSize = p1Min;
+                    split.Panel2MinSize = p2Min;
+                    split.SplitterDistance = initialDist;
+                    userRatio = initialDist / (double)total;
+                    initialized = true;
+                }
+                else
+                {
+                    var targetDist = Math.Clamp((int)Math.Round(total * userRatio), p1Min, maxDist);
+                    if (split.Panel1MinSize != p1Min) split.Panel1MinSize = p1Min;
+                    if (split.Panel2MinSize != p2Min) split.Panel2MinSize = p2Min;
+                    if (Math.Abs(split.SplitterDistance - targetDist) > 2)
+                        split.SplitterDistance = targetDist;
+                }
             }
             catch (InvalidOperationException)
             {
                 // Retry on next layout pass if host is still mid-resize
             }
+            finally
+            {
+                updating = false;
+            }
         }
 
+        split.SplitterMoved += (_, _) =>
+        {
+            if (updating || !initialized || split.IsDisposed) return;
+            var total = orientation == Orientation.Horizontal ? split.Height : split.Width;
+            if (total >= 160)
+                userRatio = Math.Clamp(split.SplitterDistance / (double)total, 0.15, 0.85);
+        };
         split.HandleCreated += (_, _) => split.BeginInvoke((Action)ApplySafeSizes);
         split.SizeChanged += (_, _) => ApplySafeSizes();
         split.Layout += (_, _) => ApplySafeSizes();
 
         return split;
+    }
+
+    /// <summary>
+    /// Dynamically sizes an AntdUI.Panel card height to its docked-top children (with multiline Label wrap support)
+    /// so cards shrink cleanly and grow instead of clipping when wrapped across narrower widths.
+    /// </summary>
+    public static void BindAutoHeightCard(AntdUI.Panel card, int minHeight = 52)
+    {
+        void SyncLayout()
+        {
+            if (card.IsDisposed) return;
+
+            var innerW = Math.Max(160, card.ClientSize.Width - card.Padding.Horizontal);
+            foreach (Control child in card.Controls)
+            {
+                if (child is Label lbl && lbl.AutoSize && lbl.Dock == DockStyle.Top)
+                {
+                    if (lbl.MaximumSize.Width != innerW)
+                        lbl.MaximumSize = new Size(innerW, 0);
+                }
+            }
+
+            var contentH = card.Controls.Cast<Control>()
+                .Where(c => c.Visible)
+                .Sum(c => c.Height + c.Margin.Vertical);
+            var targetH = Math.Max(minHeight, contentH + card.Padding.Vertical + 4);
+            if (Math.Abs(card.Height - targetH) > 1)
+                card.Height = targetH;
+        }
+
+        card.Layout += (_, _) => SyncLayout();
+        card.SizeChanged += (_, _) => SyncLayout();
+        card.ControlAdded += (_, e) =>
+        {
+            if (e.Control != null)
+                e.Control.SizeChanged += (_, _) => SyncLayout();
+            SyncLayout();
+        };
+        foreach (Control existing in card.Controls)
+            existing.SizeChanged += (_, _) => SyncLayout();
+
+        SyncLayout();
     }
 
     public static AntdUI.Table CreateAntdTable(bool bordered = false)
@@ -330,6 +400,7 @@ public static class AppTheme
             Dock = DockStyle.Fill,
             FixedHeader = true,
             VisibleHeader = true,
+            EmptyHeader = true,
             Bordered = bordered,
             EnableHeaderResizing = true,
             LostFocusClearSelection = false,
@@ -371,7 +442,6 @@ public static class AppTheme
         var sampleCount = Math.Min(list.Count, 80);
 
         var cols = new List<AntdUI.Column>(props.Length);
-        var widths = new Dictionary<AntdUI.Column, int>(props.Length);
 
         foreach (var prop in props)
         {
@@ -382,6 +452,7 @@ public static class AppTheme
             var isDecimal = underlying == typeof(decimal) || underlying == typeof(double) || underlying == typeof(float);
             var isNumeric = isDecimal || underlying == typeof(int) || underlying == typeof(long);
             var isStringList = typeof(IEnumerable<string>).IsAssignableFrom(prop.PropertyType) && prop.PropertyType != typeof(string);
+            var isLongTextCol = IsLongTextColumnName(prop.Name);
 
             var align = isNumeric && !prop.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase)
                 ? ColumnAlign.Right
@@ -411,28 +482,17 @@ public static class AppTheme
                     contentWidth = measured;
             }
 
-            var desired = Math.Clamp(Math.Max(Math.Max(78, headerWidth), contentWidth), 78, 380);
+            var maxColWidth = isLongTextCol ? 460 : 380;
+            var desired = Math.Clamp(Math.Max(Math.Max(78, headerWidth), contentWidth), 78, maxColWidth);
             var minW = Math.Clamp(headerWidth, 72, 260);
-            widths[col] = Math.Max(minW, desired);
+            var baseWidth = Math.Max(minW, desired);
+            col.Tag = baseWidth;
             col.MinWidth = $"{minW}";
-            col.Width = $"{widths[col]}";
+            col.Width = $"{baseWidth}";
             cols.Add(col);
         }
 
-        // Expand columns evenly when total measured width is narrower than the table viewport
-        var available = table.ClientSize.Width - 18;
-        var totalW = widths.Values.Sum();
-        if (cols.Count > 0 && available > totalW && available > 200)
-        {
-            var extra = available - totalW;
-            var perCol = extra / cols.Count;
-            var rem = extra % cols.Count;
-            for (int i = 0; i < cols.Count; i++)
-            {
-                var finalW = widths[cols[i]] + perCol + (i == cols.Count - 1 ? rem : 0);
-                cols[i].Width = $"{finalW}";
-            }
-        }
+        DistributeAntdTableColumnWidths(table, cols);
 
         table.PauseLayout = true;
         try
@@ -449,6 +509,74 @@ public static class AppTheme
             table.Invalidate();
         }
     }
+
+    /// <summary>
+    /// Reflows column widths of an already-bound AntdUI.Table when its viewport size changes,
+    /// preserving DataSource, scroll state, and active selection.
+    /// </summary>
+    public static void UpdateAntdTableColumnWidths(AntdUI.Table table)
+    {
+        if (table.IsDisposed || table.Columns == null || table.Columns.Count == 0) return;
+        if (table.ClientSize.Width < 120) return;
+
+        var cols = table.Columns.Cast<AntdUI.Column>().ToList();
+        if (DistributeAntdTableColumnWidths(table, cols))
+        {
+            table.PauseLayout = true;
+            try
+            {
+                table.LoadLayout();
+            }
+            finally
+            {
+                table.PauseLayout = false;
+                table.Invalidate();
+            }
+        }
+    }
+
+    private static bool DistributeAntdTableColumnWidths(AntdUI.Table table, IList<AntdUI.Column> cols)
+    {
+        if (cols.Count == 0) return false;
+
+        var baseWidths = new int[cols.Count];
+        var totalBaseW = 0;
+        for (int i = 0; i < cols.Count; i++)
+        {
+            var bw = cols[i].Tag is int tagged && tagged >= 60 ? tagged : 110;
+            baseWidths[i] = bw;
+            totalBaseW += bw;
+        }
+
+        var available = table.ClientSize.Width - 20;
+        var extra = available > 200 && available > totalBaseW ? available - totalBaseW : 0;
+        var perCol = extra / cols.Count;
+        var rem = extra % cols.Count;
+        var changed = false;
+
+        for (int i = 0; i < cols.Count; i++)
+        {
+            var finalW = baseWidths[i] + perCol + (i == cols.Count - 1 ? rem : 0);
+            var targetWidth = $"{finalW}";
+            if (!string.Equals(cols[i].Width, targetWidth, StringComparison.Ordinal))
+            {
+                cols[i].Width = targetWidth;
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private static bool IsLongTextColumnName(string propName)
+        => propName.Contains("Description", StringComparison.OrdinalIgnoreCase)
+           || propName.Contains("Notes", StringComparison.OrdinalIgnoreCase)
+           || propName.Contains("Address", StringComparison.OrdinalIgnoreCase)
+           || propName.Contains("Email", StringComparison.OrdinalIgnoreCase)
+           || propName.Contains("Reason", StringComparison.OrdinalIgnoreCase)
+           || propName.Contains("Message", StringComparison.OrdinalIgnoreCase)
+           || propName.Contains("Name", StringComparison.OrdinalIgnoreCase)
+           || propName.Contains("Title", StringComparison.OrdinalIgnoreCase);
 
     public static T? GetSelectedAntdRow<T>(AntdUI.Table table) where T : class
     {

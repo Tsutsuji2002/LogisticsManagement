@@ -173,13 +173,17 @@ public sealed class CodWorkspaceControl : ModuleViewBase, IThemeAware
 
     private void BuildReconTab()
     {
+        _tabRecon.AutoScroll = true;
         _reconSummaryCard = AppTheme.CreateCardPanel(new Padding(16));
         _reconSummaryCard.Dock = DockStyle.Top;
-        _reconSummaryCard.Height = 122;
+        _reconSummaryCard.Height = 96;
         _reconSummaryCard.Margin = new Padding(0, 0, 0, 8);
+        _reconSummaryLabel.Dock = DockStyle.Top;
+        _reconSummaryLabel.AutoSize = true;
         _reconSummaryCard.Controls.Add(_reconSummaryLabel);
+        AppTheme.BindAutoHeightCard(_reconSummaryCard, 96);
 
-        var actionPanel = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 52, Padding = new Padding(0, 8, 0, 6), BackColor = Color.Transparent };
+        var actionPanel = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(0, 8, 0, 6), BackColor = Color.Transparent };
         _reconEmployeeCombo = new AntdUI.Select { Width = 280, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 0) };
         var empBtn = AppTheme.CreatePrimaryButton("Đối soát tài xế", 130);
         empBtn.Click += async (_, _) => await ReconcileEmployeeAsync();

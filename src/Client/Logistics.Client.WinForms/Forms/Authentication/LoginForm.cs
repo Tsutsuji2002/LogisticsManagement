@@ -55,10 +55,11 @@ public sealed class LoginForm : AntdUI.Window, IThemeAware
 
         Text = "Logistics ERP — Đăng nhập hệ thống";
         Size = new Size(940, 580);
-        MinimumSize = new Size(820, 520);
+        MinimumSize = new Size(640, 480);
+        MaximumSize = new Size(1160, 760);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.None;
-        Resizable = false;
+        Resizable = true;
         MaximizeBox = false;
         Mode = AppTheme.IsDark ? TAMode.Dark : TAMode.Light;
 
@@ -141,16 +142,30 @@ public sealed class LoginForm : AntdUI.Window, IThemeAware
         _formHost = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(36, 20, 36, 24)
+            AutoScroll = true,
+            Padding = new Padding(28, 18, 28, 20)
         };
 
         var topTools = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 40,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(0, 38),
             FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
+            WrapContents = true,
             BackColor = Color.Transparent
+        };
+
+        Resize += (_, _) =>
+        {
+            var showHero = ClientSize.Width >= 760;
+            if (_heroPanel.Visible != showHero)
+                _heroPanel.Visible = showHero;
+
+            var padX = ClientSize.Width < 760 ? 18 : 28;
+            if (_formHost.Padding.Left != padX)
+                _formHost.Padding = new Padding(padX, 18, padX, 20);
         };
 
         _themeBtn = AppTheme.CreateSecondaryButton(AppTheme.IsDark ? "☀ Sáng" : "🌙 Tối", 94);

@@ -138,9 +138,12 @@ public sealed class ShippingWorkspaceControl : ModuleViewBase, IThemeAware
 
         _shipDetailCard = AppTheme.CreateCardPanel(new Padding(14, 8, 14, 8));
         _shipDetailCard.Dock = DockStyle.Top;
-        _shipDetailCard.Height = 64;
+        _shipDetailCard.Height = 56;
         _shipDetailCard.Margin = new Padding(0, 0, 0, 8);
+        _shipDetailBanner.Dock = DockStyle.Top;
+        _shipDetailBanner.AutoSize = true;
         _shipDetailCard.Controls.Add(_shipDetailBanner);
+        AppTheme.BindAutoHeightCard(_shipDetailCard, 56);
 
         _detailTabsCard = AppTheme.CreateCardPanel(new Padding(10));
         _detailTabsCard.Dock = DockStyle.Fill;

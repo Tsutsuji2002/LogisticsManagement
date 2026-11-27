@@ -102,18 +102,21 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase, IThemeAware
 
     private void BuildOperationsTab()
     {
+        _tabOps.AutoScroll = true;
         _opsCard = AppTheme.CreateCardPanel(new Padding(20));
         _opsCard.Dock = DockStyle.Top;
-        _opsCard.Height = 290;
+        _opsCard.Height = 220;
 
         _opsResultLabel = new Label
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            Padding = new Padding(0, 12, 0, 0),
             Font = AppTheme.BodyFont,
             BackColor = Color.Transparent,
             Text = "Chọn nghiệp vụ bên dưới để gọi trực tiếp API tích hợp hãng vận chuyển."
         };
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, BackColor = Color.Transparent };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, BackColor = Color.Transparent };
         var rateBtn = AppTheme.CreatePrimaryButton("Tra cứu giá cước 3PL", 165);
         rateBtn.Click += (_, _) =>
         {
@@ -144,6 +147,7 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase, IThemeAware
         bar.Controls.AddRange([rateBtn, trkBtn]);
         _opsCard.Controls.Add(_opsResultLabel);
         _opsCard.Controls.Add(bar);
+        AppTheme.BindAutoHeightCard(_opsCard, 220);
         _tabOps.Controls.Add(_opsCard);
     }
 

@@ -48,13 +48,15 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
         _tabs = AppTheme.CreateAntdTabs();
 
         // Tab 1: Profile & Security
-        var profileTab = new AntdUI.TabPage { Text = "Hồ sơ & Mật khẩu", Padding = new Padding(12) };
+        var profileTab = new AntdUI.TabPage { Text = "Hồ sơ & Mật khẩu", Padding = new Padding(12), AutoScroll = true };
         _profileCard = AppTheme.CreateCardPanel(new Padding(22));
         _profileCard.Dock = DockStyle.Top;
-        _profileCard.Height = 270;
-        _profileSummaryLabel.Location = new Point(22, 22);
+        _profileCard.Height = 210;
+        _profileSummaryLabel.Dock = DockStyle.Top;
+        _profileSummaryLabel.AutoSize = true;
+        _profileSummaryLabel.Padding = new Padding(0, 0, 0, 16);
 
-        var btnBar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, BackColor = Color.Transparent };
+        var btnBar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, BackColor = Color.Transparent, Margin = new Padding(0) };
         var changePwdBtn = AppTheme.CreatePrimaryButton("Đổi mật khẩu", 140);
         changePwdBtn.Click += async (_, _) => await ChangePasswordAsync();
         var refreshProfileBtn = AppTheme.CreateSecondaryButton("Đồng bộ quyền (/auth/me)", 180);
@@ -65,8 +67,9 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
             UiAsyncRunner.ShowInfo(this, "Đã cập nhật hồ sơ & phân quyền mới nhất từ máy chủ.");
         }, refreshProfileBtn, logger: _logger);
         btnBar.Controls.AddRange([changePwdBtn, refreshProfileBtn]);
-        _profileCard.Controls.Add(_profileSummaryLabel);
         _profileCard.Controls.Add(btnBar);
+        _profileCard.Controls.Add(_profileSummaryLabel);
+        AppTheme.BindAutoHeightCard(_profileCard, 210);
         profileTab.Controls.Add(_profileCard);
 
         // Tab 2: Active Sessions
@@ -86,7 +89,7 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
         sessionsTab.Controls.Add(_sessionsGrid);
 
         // Tab 3: Application Config & Diagnostics
-        _configTab = new AntdUI.TabPage { Text = "Cấu hình API, Giao diện & Nhật ký", Padding = new Padding(12) };
+        _configTab = new AntdUI.TabPage { Text = "Cấu hình API, Giao diện & Nhật ký", Padding = new Padding(12), AutoScroll = true };
         BuildConfigTab(_configTab);
 
         _tabs.Pages.AddRange([profileTab, sessionsTab, _configTab]);
@@ -98,7 +101,7 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
     {
         _configCard = AppTheme.CreateCardPanel(new Padding(24));
         _configCard.Dock = DockStyle.Top;
-        _configCard.Height = 395;
+        _configCard.Height = 360;
 
         var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, MaximumSize = new Size(680, 0), BackColor = Color.Transparent };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35F));
@@ -122,7 +125,7 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
         AddRow(table, 3, "Ngôn ngữ giao diện:", _langCombo);
         AddRow(table, 4, "Chủ đề giao diện:", _themeCombo);
 
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 54, Padding = new Padding(0, 14, 0, 0), BackColor = Color.Transparent };
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(0, 14, 0, 0), BackColor = Color.Transparent };
         var saveBtn = AppTheme.CreatePrimaryButton("Lưu cấu hình", 130);
         saveBtn.Click += (_, _) =>
         {
@@ -159,6 +162,7 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
         actions.Controls.AddRange([saveBtn, testBtn, openLogsBtn]);
         _configCard.Controls.Add(actions);
         _configCard.Controls.Add(table);
+        AppTheme.BindAutoHeightCard(_configCard, 360);
         tab.Controls.Add(_configCard);
     }
 

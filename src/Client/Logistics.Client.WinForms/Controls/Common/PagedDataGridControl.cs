@@ -26,6 +26,7 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
     private readonly Label _pageSummaryLabel;
     private readonly System.Windows.Forms.Panel _toolbarSeparator;
     private readonly System.Windows.Forms.Panel _footerPanel;
+    private readonly TableLayoutPanel _footerGrid;
     private readonly Timer _searchDebounce;
 
     private IList _currentItems = Array.Empty<object>();
@@ -34,6 +35,7 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
     private int _pageSize = 20;
     private int _totalCount;
     private bool _suppressPageEvents;
+    private bool? _lastCompactFooter;
 
     public PagedDataGridControl(string title, string? subtitle = null, bool showSearch = true, bool showPagination = true)
     {
@@ -194,8 +196,8 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
         _table = AppTheme.CreateAntdTable();
         _table.SizeChanged += (_, _) =>
         {
-            if (_currentItems.Count > 0 || _table.Columns.Count > 0)
-                AppTheme.BindAntdTable(_table, _currentItemType, _currentItems);
+            AppTheme.UpdateAntdTableColumnWidths(_table);
+            ApplyResponsiveGridLayout();
         };
         _table.SelectIndexChanged += (_, e) => SelectionChanged?.Invoke(this, e);
         _table.CellClick += (_, e) => SelectionChanged?.Invoke(this, e);
@@ -205,38 +207,59 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
                 RowDoubleClicked?.Invoke(this, e);
         };
 
-        // Pagination Footer
+        // Responsive Pagination Footer (1-row >= 700px, 2-row compact < 700px)
         _footerPanel = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 46,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(0, 44),
             Visible = showPagination,
             Padding = new Padding(16, 6, 16, 6)
         };
 
+        _footerGrid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            Margin = new Padding(0),
+            Padding = new Padding(0)
+        };
+        _footerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        _footerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _footerGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
         _pageSummaryLabel = new Label
         {
-            Dock = DockStyle.Left,
+            Dock = DockStyle.Fill,
             AutoSize = false,
-            Width = 260,
+            AutoEllipsis = true,
+            Height = 32,
             TextAlign = ContentAlignment.MiddleLeft,
             Font = AppTheme.SmallFont,
-            Text = "0 bản ghi"
+            Text = "Tổng: 0 bản ghi • Trang 1/1",
+            Margin = new Padding(0, 0, 8, 0)
         };
 
         _pagination = new AntdUI.Pagination
         {
             Dock = DockStyle.Right,
-            Width = 480,
+            Width = 420,
+            Height = 32,
             Current = 1,
             PageSize = 20,
             Total = 0,
             ShowSizeChanger = true,
             PageSizeOptions = [10, 20, 50, 100],
-            SizeChangerWidth = 84,
+            SizeChangerWidth = 78,
             Radius = 6,
             Font = AppTheme.SmallFont,
-            RecordsPerPageText = "/ trang"
+            RecordsPerPageText = "/ trang",
+            Margin = new Padding(0)
         };
         _pagination.ValueChanged += (_, e) =>
         {
@@ -246,8 +269,9 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
             RaiseReload();
         };
 
-        _footerPanel.Controls.Add(_pagination);
-        _footerPanel.Controls.Add(_pageSummaryLabel);
+        _footerGrid.Controls.Add(_pageSummaryLabel, 0, 0);
+        _footerGrid.Controls.Add(_pagination, 1, 0);
+        _footerPanel.Controls.Add(_footerGrid);
 
         // Docking order
         Controls.Add(_table);
@@ -257,7 +281,9 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
         Controls.Add(headerPanel);
         Controls.Add(_footerPanel);
 
+        SizeChanged += (_, _) => ApplyResponsiveGridLayout();
         ApplyTheme();
+        ApplyResponsiveGridLayout();
     }
 
     public AntdUI.Table Table => _table;
@@ -313,17 +339,8 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
         _totalCount = Math.Max(0, result.TotalCount);
 
         AppTheme.BindAntdTable(_table, result.Items);
-
-        if (result.Items.Count == 0)
-        {
-            _bannerAlert.Text = "Không có dữ liệu phù hợp với bộ lọc hiện tại.";
-            _bannerAlert.Icon = TType.Warn;
-            _bannerAlert.Visible = true;
-        }
-        else
-        {
-            _bannerAlert.Visible = false;
-        }
+        // EmptyHeader = true keeps column headers + consistent table body visible on 0 records without layout shift.
+        _bannerAlert.Visible = false;
 
         UpdatePaginationState();
     }
@@ -338,12 +355,7 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
         _totalCount = items.Count;
 
         AppTheme.BindAntdTable(_table, items);
-        _bannerAlert.Visible = items.Count == 0;
-        if (items.Count == 0)
-        {
-            _bannerAlert.Text = "Không có dữ liệu.";
-            _bannerAlert.Icon = TType.Warn;
-        }
+        _bannerAlert.Visible = false;
 
         UpdatePaginationState();
     }
@@ -383,6 +395,72 @@ public sealed class PagedDataGridControl : AntdUI.Panel, IThemeAware
         }
 
         _pageSummaryLabel.Text = $"Tổng: {_totalCount:N0} bản ghi • Trang {_currentPage}/{totalPages}";
+    }
+
+    private void ApplyResponsiveGridLayout()
+    {
+        if (IsDisposed) return;
+
+        var width = ClientSize.Width;
+        if (width < 120) return;
+
+        var targetSearchW = Math.Clamp(width - 140, 150, 280);
+        if (_searchInput.Width != targetSearchW)
+            _searchInput.Width = targetSearchW;
+
+        var compactFooter = width < 700;
+        if (_lastCompactFooter != compactFooter)
+        {
+            _lastCompactFooter = compactFooter;
+            _footerGrid.SuspendLayout();
+            try
+            {
+                _footerGrid.Controls.Clear();
+                _footerGrid.ColumnStyles.Clear();
+                _footerGrid.RowStyles.Clear();
+
+                if (compactFooter)
+                {
+                    _footerGrid.ColumnCount = 1;
+                    _footerGrid.RowCount = 2;
+                    _footerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                    _footerGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                    _footerGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+                    _pagination.Dock = DockStyle.Left;
+                    _pageSummaryLabel.Height = 20;
+                    _pageSummaryLabel.Margin = new Padding(0, 4, 0, 0);
+
+                    _footerGrid.Controls.Add(_pagination, 0, 0);
+                    _footerGrid.Controls.Add(_pageSummaryLabel, 0, 1);
+                }
+                else
+                {
+                    _footerGrid.ColumnCount = 2;
+                    _footerGrid.RowCount = 1;
+                    _footerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                    _footerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                    _footerGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+                    _pagination.Dock = DockStyle.Right;
+                    _pageSummaryLabel.Height = 32;
+                    _pageSummaryLabel.Margin = new Padding(0, 0, 8, 0);
+
+                    _footerGrid.Controls.Add(_pageSummaryLabel, 0, 0);
+                    _footerGrid.Controls.Add(_pagination, 1, 0);
+                }
+            }
+            finally
+            {
+                _footerGrid.ResumeLayout(true);
+            }
+        }
+
+        var innerFooterW = Math.Max(240, width - 32);
+        _pagination.ShowSizeChanger = innerFooterW >= 360;
+        var targetPagW = Math.Clamp(compactFooter ? innerFooterW : Math.Min(440, innerFooterW - 180), 220, 440);
+        if (_pagination.Width != targetPagW)
+            _pagination.Width = targetPagW;
     }
 
     private void RaiseReload() => ReloadRequested?.Invoke(this, EventArgs.Empty);

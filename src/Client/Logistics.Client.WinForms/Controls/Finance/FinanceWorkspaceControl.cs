@@ -121,7 +121,7 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase, IThemeAware
 
         _rulesCard = AppTheme.CreateCardPanel(new Padding(10));
         _rulesCard.Dock = DockStyle.Fill;
-        var rulesTop = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, BackColor = Color.Transparent };
+        var rulesTop = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, BackColor = Color.Transparent };
         rulesTop.Controls.Add(new Label { Text = "Quy tắc tính cước (ShippingRateRules)", Font = AppTheme.SectionTitleFont, AutoSize = true, Margin = new Padding(0, 8, 12, 0), BackColor = Color.Transparent });
         if (_auth.HasPermission(ClientPermissions.Finance.RatesManage))
         {

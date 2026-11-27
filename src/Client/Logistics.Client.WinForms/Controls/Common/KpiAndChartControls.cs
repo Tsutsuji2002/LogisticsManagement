@@ -179,9 +179,12 @@ public sealed class SimpleBarChartControl : AntdUI.Panel, IThemeAware
         var max = Math.Max(1m, _data.Max(d => d.Value));
         var top = 46;
         var rowHeight = Math.Max(22, Math.Min(34, (Height - top - 16) / Math.Max(1, _data.Count)));
-        var labelWidth = Math.Min(155, Width / 3);
-        var valueWidth = 96;
-        var barAreaWidth = Math.Max(60, Width - labelWidth - valueWidth - 40);
+        var labelWidth = Math.Clamp((int)(Width * 0.30), 100, 195);
+        var valueWidth = Math.Clamp((int)(Width * 0.18), 76, 110);
+        var barAreaWidth = Math.Max(48, Width - labelWidth - valueWidth - 40);
+
+        using var ellipsisLeft = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+        using var ellipsisRight = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap, Alignment = StringAlignment.Far };
 
         for (int i = 0; i < _data.Count; i++)
         {
@@ -193,7 +196,7 @@ public sealed class SimpleBarChartControl : AntdUI.Panel, IThemeAware
             var ratio = (double)(item.Value / max);
             var barWidth = (int)Math.Round(barAreaWidth * Math.Clamp(ratio, 0, 1));
 
-            g.DrawString(Truncate(item.Label, 22), AppTheme.SmallFont, textBrush, new RectangleF(16, y + 4, labelWidth - 8, rowHeight));
+            g.DrawString(item.Label, AppTheme.SmallFont, textBrush, new RectangleF(16, y + 4, labelWidth - 8, rowHeight), ellipsisLeft);
             var trackRect = new Rectangle(16 + labelWidth, y + 6, barAreaWidth, Math.Max(10, rowHeight - 14));
             g.FillRectangle(trackBrush, trackRect);
 
@@ -205,10 +208,7 @@ public sealed class SimpleBarChartControl : AntdUI.Panel, IThemeAware
             }
 
             g.DrawString(item.DisplayValue ?? item.Value.ToString("N0"), AppTheme.SmallFont, titleBrush,
-                new RectangleF(16 + labelWidth + barAreaWidth + 8, y + 4, valueWidth - 8, rowHeight));
+                new RectangleF(16 + labelWidth + barAreaWidth + 8, y + 4, valueWidth - 8, rowHeight), ellipsisRight);
         }
     }
-
-    private static string Truncate(string input, int maxLen)
-        => input.Length <= maxLen ? input : input[..(maxLen - 1)] + "…";
 }

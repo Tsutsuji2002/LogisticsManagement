@@ -134,9 +134,10 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase, IThemeAware
 
     private void BuildParcelHubTab()
     {
-        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 200, 160);
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 220, 160);
         _hubCard = AppTheme.CreateCardPanel(new Padding(16));
         _hubCard.Dock = DockStyle.Fill;
+        _hubCard.AutoScroll = true;
 
         var header = new Label
         {
@@ -148,14 +149,14 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase, IThemeAware
             BackColor = Color.Transparent
         };
 
-        var controlsFlow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, WrapContents = true, Padding = new Padding(0, 4, 0, 0), BackColor = Color.Transparent };
+        var controlsFlow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, Padding = new Padding(0, 4, 0, 0), BackColor = Color.Transparent };
         _hubWarehouseCombo = new AntdUI.Select { Width = 240, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 4) };
-        _scanInputBox = new AntdUI.Input { PlaceholderText = "Nhập Tracking / Barcode bưu kiện...", Width = 270, Height = 34, Radius = 6, AllowClear = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 4) };
+        _scanInputBox = new AntdUI.Input { PlaceholderText = "Nhập Tracking / Barcode bưu kiện...", Width = 260, Height = 34, Radius = 6, AllowClear = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 0, 8, 4) };
         var scanBtn = AppTheme.CreatePrimaryButton("Quét bưu kiện", 130);
         scanBtn.Click += async (_, _) => await ScanParcelAsync();
         controlsFlow.Controls.AddRange([_hubWarehouseCombo, _scanInputBox, scanBtn]);
 
-        var opsFlow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, WrapContents = true, BackColor = Color.Transparent };
+        var opsFlow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, BackColor = Color.Transparent };
         var recvBtn = AppTheme.CreateSuccessButton("1. Nhập Hub (Receive)", 155);
         recvBtn.Click += async (_, _) => await ReceiveParcelAsync();
         var sortBtn = AppTheme.CreateSecondaryButton("2. Phân loại (Sort)", 155);
@@ -174,7 +175,9 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase, IThemeAware
 
         _scanResultLabel = new Label
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            Padding = new Padding(0, 8, 0, 4),
             Font = AppTheme.BodyFont,
             ForeColor = AppTheme.TextSecondary,
             Text = "Quét mã vận đơn hoặc barcode kiện hàng để xem trạng thái và thao tác tiếp theo được phép."
@@ -217,7 +220,7 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase, IThemeAware
     {
         var panel = AppTheme.CreateCardPanel(new Padding(10));
         panel.Dock = DockStyle.Fill;
-        var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, BackColor = Color.Transparent };
+        var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, BackColor = Color.Transparent };
         top.Controls.Add(new Label { Text = title, Font = AppTheme.SectionTitleFont, AutoSize = true, Margin = new Padding(0, 8, 12, 0), BackColor = Color.Transparent });
         if (action1.HasValue)
         {

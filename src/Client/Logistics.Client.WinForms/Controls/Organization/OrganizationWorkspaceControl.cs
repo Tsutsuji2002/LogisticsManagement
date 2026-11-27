@@ -93,8 +93,10 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase, IThemeAware
     private void BuildCompanyTab()
     {
         _tabCompany.Padding = new Padding(4);
+        _tabCompany.AutoScroll = true;
         _companyCard = AppTheme.CreateCardPanel(new Padding(22));
         _companyCard.Dock = DockStyle.Fill;
+        _companyCard.AutoScroll = true;
 
         _companyTitleLabel = new Label
         {
@@ -107,13 +109,14 @@ public sealed class OrganizationWorkspaceControl : ModuleViewBase, IThemeAware
         _companyInfoLabel = new Label
         {
             Dock = DockStyle.Top,
-            Height = 200,
+            AutoSize = true,
+            MinimumSize = new Size(0, 120),
             Font = AppTheme.BodyFont,
             Padding = new Padding(0, 12, 0, 12),
             BackColor = Color.Transparent
         };
 
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, BackColor = Color.Transparent };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, BackColor = Color.Transparent };
         _editCompanyBtn = AppTheme.CreatePrimaryButton("Sửa thông tin công ty", 180);
         _editCompanyBtn.Enabled = _auth.HasPermission(ClientPermissions.Organization.CompanyUpdate);
         _editCompanyBtn.Click += async (_, _) => await EditCompanyAsync();

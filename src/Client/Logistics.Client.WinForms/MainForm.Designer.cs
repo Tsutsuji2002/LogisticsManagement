@@ -11,7 +11,8 @@ partial class MainForm
         SuspendLayout();
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(1440, 880);
-        MinimumSize = new Size(1120, 680);
+        MinimumSize = new Size(1024, 660);
+        MaximumSize = new Size(1920, 1200);
         StartPosition = FormStartPosition.CenterScreen;
         Text = "Logistics Management System — Enterprise Desktop";
         ResumeLayout(false);

@@ -70,7 +70,9 @@ public sealed class ModalFormDialog : AntdUI.Window, IThemeAware
         MaximizeBox = false;
         ShowInTaskbar = false;
         Resizable = true;
-        Size = new Size(width, Math.Clamp(220 + fields.Count() * 58, 300, 740));
+        MinimumSize = new Size(440, 300);
+        var targetWidth = Math.Clamp(width, 440, 920);
+        Size = new Size(targetWidth, Math.Clamp(220 + fields.Count() * 58, 320, 740));
         Mode = AppTheme.IsDark ? TAMode.Dark : TAMode.Light;
 
         _header = new AntdUI.PageHeader
@@ -202,7 +204,34 @@ public sealed class ModalFormDialog : AntdUI.Window, IThemeAware
         Controls.Add(_header);
 
         CancelButton = _cancelBtn;
+
+        Load += (_, _) => ClampModalToScreen();
+        Resize += (_, _) =>
+        {
+            if (table.ColumnStyles.Count > 0 && ClientSize.Width > 0)
+            {
+                var labelColW = ClientSize.Width < 500 ? 132F : 165F;
+                if (Math.Abs(table.ColumnStyles[0].Width - labelColW) > 1F)
+                    table.ColumnStyles[0].Width = labelColW;
+            }
+        };
         ApplyTheme();
+    }
+
+    private void ClampModalToScreen()
+    {
+        var host = (Control?)Owner ?? this;
+        var workArea = Screen.FromControl(host).WorkingArea;
+        if (workArea.Width <= 0 || workArea.Height <= 0) return;
+
+        var minW = Math.Min(440, workArea.Width - 24);
+        var minH = Math.Min(300, workArea.Height - 24);
+        var maxW = Math.Max(minW, Math.Min(920, workArea.Width - 40));
+        var maxH = Math.Max(minH, workArea.Height - 40);
+
+        MinimumSize = new Size(minW, minH);
+        MaximumSize = new Size(maxW, maxH);
+        Size = new Size(Math.Clamp(Width, minW, maxW), Math.Clamp(Height, minH, maxH));
     }
 
     public IReadOnlyDictionary<string, object?> Values => ReadValues();

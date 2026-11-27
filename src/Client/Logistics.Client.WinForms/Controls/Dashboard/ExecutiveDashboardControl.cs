@@ -24,8 +24,10 @@ public sealed class ExecutiveDashboardControl : ModuleViewBase, IThemeAware
     private readonly AntdUI.Select _dashboardScopeCombo;
     private readonly AntdUI.Button _refreshBtn;
     private readonly Label _scopeInfoLabel;
-    private readonly FlowLayoutPanel _kpiFlow;
+    private readonly TableLayoutPanel _kpiGrid;
     private readonly TableLayoutPanel _chartsGrid;
+    private int _currentKpiCols = -1;
+    private int _currentChartCols = -1;
 
     private readonly KpiCardControl _cardOrders = new("Đơn hàng (Orders)", "0", "Trong kỳ lọc", AppTheme.PrimaryBlue);
     private readonly KpiCardControl _cardShipments = new("Vận đơn (Shipments)", "0", "Đang giao / Tổng", AppTheme.SuccessEmerald);
@@ -59,18 +61,21 @@ public sealed class ExecutiveDashboardControl : ModuleViewBase, IThemeAware
         _logger = logger;
 
         Padding = new Padding(10);
+        AutoScroll = true;
 
         _topBar = AppTheme.CreateCardPanel(new Padding(14, 10, 14, 10));
         _topBar.Dock = DockStyle.Top;
-        _topBar.Height = 60;
-        _topBar.Margin = new Padding(0, 0, 0, 12);
+        _topBar.Height = 56;
+        _topBar.Margin = new Padding(0, 0, 0, 10);
 
         var filterFlow = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            AutoSize = false,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             WrapContents = true,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Margin = new Padding(0)
         };
 
         _dashboardScopeCombo = new AntdUI.Select
@@ -135,39 +140,143 @@ public sealed class ExecutiveDashboardControl : ModuleViewBase, IThemeAware
 
         filterFlow.Controls.AddRange([_dashboardScopeCombo, _useDateFilter, _fromPicker, _toPicker, _refreshBtn, _scopeInfoLabel]);
         _topBar.Controls.Add(filterFlow);
+        AppTheme.BindAutoHeightCard(_topBar, 56);
 
-        _kpiFlow = new FlowLayoutPanel
+        _kpiGrid = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            WrapContents = true,
-            Margin = new Padding(0, 12, 0, 8)
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 3,
+            RowCount = 2,
+            Margin = new Padding(0, 10, 0, 6),
+            Padding = new Padding(0, 10, 0, 4),
+            BackColor = Color.Transparent
         };
         foreach (var card in new[] { _cardOrders, _cardShipments, _cardInventory, _cardFinance, _cardCod, _cardWarehouses })
         {
-            card.Width = 240;
-            _kpiFlow.Controls.Add(card);
+            card.Dock = DockStyle.Fill;
+            card.Margin = new Padding(0, 0, 10, 10);
+            card.MinimumSize = new Size(190, 108);
         }
 
         _chartsGrid = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            Height = 360,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(0, 12, 0, 0)
+            Padding = new Padding(0, 8, 0, 0),
+            BackColor = Color.Transparent
         };
-        _chartsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-        _chartsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
         _leftChart.Dock = DockStyle.Fill;
         _rightChart.Dock = DockStyle.Fill;
-        _chartsGrid.Controls.Add(_leftChart, 0, 0);
-        _chartsGrid.Controls.Add(_rightChart, 1, 0);
 
         Controls.Add(_chartsGrid);
         Controls.Add(_notesLabel);
-        Controls.Add(_kpiFlow);
+        Controls.Add(_kpiGrid);
         Controls.Add(_topBar);
+
+        SizeChanged += (_, _) => ApplyResponsiveDashboardLayout();
         ApplyTheme();
+        ApplyResponsiveDashboardLayout();
+    }
+
+    public int CurrentKpiColumns => _kpiGrid.ColumnCount;
+    public int CurrentChartColumns => _chartsGrid.ColumnCount;
+
+    /// <summary>
+    /// Adjusts KPI card grid columns (3 / 2 / 1) and chart layout (2 / 1) smoothly across breakpoints.
+    /// </summary>
+    private void ApplyResponsiveDashboardLayout()
+    {
+        if (IsDisposed) return;
+
+        var width = ClientSize.Width;
+        if (width < 200) return;
+
+        var cards = new[] { _cardOrders, _cardShipments, _cardInventory, _cardFinance, _cardCod, _cardWarehouses };
+        var targetKpiCols = width >= 1060 ? 3 : width >= 620 ? 2 : 1;
+
+        if (_currentKpiCols != targetKpiCols)
+        {
+            _currentKpiCols = targetKpiCols;
+            var kpiRows = (int)Math.Ceiling(cards.Length / (double)targetKpiCols);
+            _kpiGrid.SuspendLayout();
+            try
+            {
+                _kpiGrid.Controls.Clear();
+                _kpiGrid.ColumnStyles.Clear();
+                _kpiGrid.RowStyles.Clear();
+                _kpiGrid.ColumnCount = targetKpiCols;
+                _kpiGrid.RowCount = kpiRows;
+
+                var colPct = 100F / targetKpiCols;
+                for (int c = 0; c < targetKpiCols; c++)
+                    _kpiGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, colPct));
+                for (int r = 0; r < kpiRows; r++)
+                    _kpiGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+                for (int i = 0; i < cards.Length; i++)
+                {
+                    var isLastInRow = (i % targetKpiCols) == (targetKpiCols - 1);
+                    cards[i].Margin = new Padding(0, 0, isLastInRow ? 0 : 10, 10);
+                    _kpiGrid.Controls.Add(cards[i], i % targetKpiCols, i / targetKpiCols);
+                }
+            }
+            finally
+            {
+                _kpiGrid.ResumeLayout(true);
+            }
+        }
+
+        var targetChartCols = width >= 860 ? 2 : 1;
+        if (_currentChartCols != targetChartCols)
+        {
+            _currentChartCols = targetChartCols;
+            _chartsGrid.SuspendLayout();
+            try
+            {
+                _chartsGrid.Controls.Clear();
+                _chartsGrid.ColumnStyles.Clear();
+                _chartsGrid.RowStyles.Clear();
+                _chartsGrid.ColumnCount = targetChartCols;
+                _chartsGrid.RowCount = targetChartCols == 2 ? 1 : 2;
+
+                if (targetChartCols == 2)
+                {
+                    _chartsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+                    _chartsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+                    _chartsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+                    _leftChart.Margin = new Padding(0, 0, 8, 0);
+                    _rightChart.Margin = new Padding(8, 0, 0, 0);
+                    _chartsGrid.Controls.Add(_leftChart, 0, 0);
+                    _chartsGrid.Controls.Add(_rightChart, 1, 0);
+                }
+                else
+                {
+                    _chartsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                    _chartsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+                    _chartsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+                    _leftChart.Margin = new Padding(0, 0, 0, 10);
+                    _rightChart.Margin = new Padding(0);
+                    _chartsGrid.Controls.Add(_leftChart, 0, 0);
+                    _chartsGrid.Controls.Add(_rightChart, 0, 1);
+                }
+            }
+            finally
+            {
+                _chartsGrid.ResumeLayout(true);
+            }
+        }
+
+        var usedTop = _topBar.Height + _kpiGrid.Height + _notesLabel.Height + Padding.Vertical + 18;
+        var availableChartH = ClientSize.Height - usedTop;
+        var desiredChartH = targetChartCols == 2
+            ? Math.Max(280, Math.Min(560, availableChartH))
+            : Math.Max(520, availableChartH);
+        if (Math.Abs(_chartsGrid.Height - desiredChartH) > 4)
+            _chartsGrid.Height = desiredChartH;
     }
 
     private void PopulateScopes()

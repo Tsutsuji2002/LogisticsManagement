@@ -89,7 +89,7 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase, IThemeAware
         var detailTabs = AppTheme.CreateAntdTabs();
 
         var tItems = new AntdUI.TabPage { Text = "Sản phẩm (OrderItems)" };
-        var itemBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(4), BackColor = Color.Transparent };
+        var itemBar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(4), BackColor = Color.Transparent };
         if (_auth.HasPermission(ClientPermissions.Sales.OrdersUpdate))
         {
             var addItemBtn = AppTheme.CreatePrimaryButton("+ Thêm dòng hàng", 135);
@@ -100,7 +100,7 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase, IThemeAware
         tItems.Controls.Add(itemBar);
 
         var tPkgs = new AntdUI.TabPage { Text = "Kiện hàng (OrderPackages)" };
-        var pkgBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(4), BackColor = Color.Transparent };
+        var pkgBar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(4), BackColor = Color.Transparent };
         if (_auth.HasPermission(ClientPermissions.Sales.OrdersUpdate))
         {
             var addPkgBtn = AppTheme.CreatePrimaryButton("+ Thêm kiện hàng", 135);
@@ -117,9 +117,12 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase, IThemeAware
 
         _detailHeaderCard = AppTheme.CreateCardPanel(new Padding(14, 8, 14, 8));
         _detailHeaderCard.Dock = DockStyle.Top;
-        _detailHeaderCard.Height = 64;
+        _detailHeaderCard.Height = 56;
         _detailHeaderCard.Margin = new Padding(0, 0, 0, 8);
+        _detailHeaderLabel.Dock = DockStyle.Top;
+        _detailHeaderLabel.AutoSize = true;
         _detailHeaderCard.Controls.Add(_detailHeaderLabel);
+        AppTheme.BindAutoHeightCard(_detailHeaderCard, 56);
 
         _detailTabsCard = AppTheme.CreateCardPanel(new Padding(10));
         _detailTabsCard.Dock = DockStyle.Fill;

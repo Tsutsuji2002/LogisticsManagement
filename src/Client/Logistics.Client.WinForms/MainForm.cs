@@ -52,6 +52,9 @@ public partial class MainForm : AntdUI.Window, IThemeAware
     private readonly AntdUI.Menu _sidebarMenu;
 
     private readonly System.Windows.Forms.Panel _subHeaderPanel;
+    private readonly TableLayoutPanel _headerLayout;
+    private readonly System.Windows.Forms.Panel _leftNavPanel;
+    private readonly FlowLayoutPanel _rightContextFlow;
     private readonly System.Windows.Forms.Panel _subHeaderDivider;
     private readonly AntdUI.Button _collapseBtn;
     private readonly AntdUI.Breadcrumb _breadcrumb;
@@ -59,6 +62,7 @@ public partial class MainForm : AntdUI.Window, IThemeAware
     private readonly AntdUI.Select _languageSelect;
     private readonly AntdUI.Button _themeToggleBtn;
     private readonly AntdUI.Button _bellBtn;
+    private readonly System.Windows.Forms.Panel _bellHost;
     private readonly AntdUI.Badge _unreadBadge;
     private readonly AntdUI.Dropdown _userDropdown;
 
@@ -70,6 +74,9 @@ public partial class MainForm : AntdUI.Window, IThemeAware
 
     private readonly Dictionary<string, Control> _cachedModules = new(StringComparer.OrdinalIgnoreCase);
     private bool _sidebarCollapsed;
+    private bool? _manualSidebarCollapsed;
+    private bool? _lastNarrowShell;
+    private bool? _lastTwoRowHeader;
     private bool _suppressSelectionEvents;
     private NavigationItemDescriptor? _currentNavItem;
     private NavigationGroupDescriptor? _currentNavGroup;
@@ -189,24 +196,32 @@ public partial class MainForm : AntdUI.Window, IThemeAware
         _subHeaderPanel = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Top,
-            Height = 56,
-            Padding = new Padding(14, 10, 14, 10)
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(0, 52),
+            Padding = new Padding(14, 8, 14, 8)
         };
 
-        var headerLayout = new TableLayoutPanel
+        _headerLayout = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
             RowCount = 1,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Margin = new Padding(0),
+            Padding = new Padding(0)
         };
-        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        headerLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        _headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        _headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _headerLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        var leftNavPanel = new System.Windows.Forms.Panel
+        _leftNavPanel = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Fill,
+            Height = 36,
+            MinimumSize = new Size(180, 36),
             BackColor = Color.Transparent,
             Margin = new Padding(0, 0, 12, 0)
         };
@@ -226,13 +241,14 @@ public partial class MainForm : AntdUI.Window, IThemeAware
             Padding = new Padding(10, 2, 4, 0)
         };
 
-        leftNavPanel.Controls.Add(_breadcrumb);
-        leftNavPanel.Controls.Add(_collapseBtn);
+        _leftNavPanel.Controls.Add(_breadcrumb);
+        _leftNavPanel.Controls.Add(_collapseBtn);
 
-        var rightContextFlow = new FlowLayoutPanel
+        _rightContextFlow = new FlowLayoutPanel
         {
             Dock = DockStyle.Right,
             AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
             BackColor = Color.Transparent,
@@ -242,7 +258,7 @@ public partial class MainForm : AntdUI.Window, IThemeAware
         _userDropdown = new AntdUI.Dropdown
         {
             Height = 34,
-            Width = 152,
+            Width = 148,
             Radius = 6,
             Type = TTypeMini.Default,
             BorderWidth = 1F,
@@ -260,7 +276,7 @@ public partial class MainForm : AntdUI.Window, IThemeAware
         ]);
         _userDropdown.SelectedValueChanged += async (_, e) => await HandleUserDropdownActionAsync(e.Value?.ToString());
 
-        var bellHost = new System.Windows.Forms.Panel
+        _bellHost = new System.Windows.Forms.Panel
         {
             Width = 88,
             Height = 34,
@@ -279,8 +295,8 @@ public partial class MainForm : AntdUI.Window, IThemeAware
             Text = "0",
             Font = AppTheme.SmallFont
         };
-        bellHost.Controls.Add(_bellBtn);
-        bellHost.Controls.Add(_unreadBadge);
+        _bellHost.Controls.Add(_bellBtn);
+        _bellHost.Controls.Add(_unreadBadge);
 
         _themeToggleBtn = AppTheme.CreateSecondaryButton(AppTheme.IsDark ? "Light" : "Dark", 82);
         _themeToggleBtn.Margin = new Padding(6, 0, 0, 0);
@@ -307,7 +323,7 @@ public partial class MainForm : AntdUI.Window, IThemeAware
 
         _branchSelect = new AntdUI.Select
         {
-            Width = 205,
+            Width = 195,
             Height = 34,
             Radius = 6,
             List = true,
@@ -317,15 +333,15 @@ public partial class MainForm : AntdUI.Window, IThemeAware
         };
         _branchSelect.SelectedIndexChanged += async (_, _) => await OnBranchSelectedAsync();
 
-        rightContextFlow.Controls.Add(_userDropdown);
-        rightContextFlow.Controls.Add(bellHost);
-        rightContextFlow.Controls.Add(_themeToggleBtn);
-        rightContextFlow.Controls.Add(_languageSelect);
-        rightContextFlow.Controls.Add(_branchSelect);
+        _rightContextFlow.Controls.Add(_userDropdown);
+        _rightContextFlow.Controls.Add(_bellHost);
+        _rightContextFlow.Controls.Add(_themeToggleBtn);
+        _rightContextFlow.Controls.Add(_languageSelect);
+        _rightContextFlow.Controls.Add(_branchSelect);
 
-        headerLayout.Controls.Add(leftNavPanel, 0, 0);
-        headerLayout.Controls.Add(rightContextFlow, 1, 0);
-        _subHeaderPanel.Controls.Add(headerLayout);
+        _headerLayout.Controls.Add(_leftNavPanel, 0, 0);
+        _headerLayout.Controls.Add(_rightContextFlow, 1, 0);
+        _subHeaderPanel.Controls.Add(_headerLayout);
 
         _subHeaderDivider = new System.Windows.Forms.Panel
         {
@@ -340,7 +356,7 @@ public partial class MainForm : AntdUI.Window, IThemeAware
             Padding = new Padding(14)
         };
 
-        // Footer Bar
+        // Responsive Footer Bar (2-column TableLayoutPanel prevents narrow overlap)
         _footerPanel = new System.Windows.Forms.Panel
         {
             Dock = DockStyle.Bottom,
@@ -348,26 +364,42 @@ public partial class MainForm : AntdUI.Window, IThemeAware
             Padding = new Padding(14, 4, 14, 4)
         };
 
+        var footerGrid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            Margin = new Padding(0),
+            Padding = new Padding(0)
+        };
+        footerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60F));
+        footerGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
+        footerGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
         _footerInfoLabel = new Label
         {
-            Dock = DockStyle.Left,
+            Dock = DockStyle.Fill,
             AutoSize = false,
-            Width = 720,
+            AutoEllipsis = true,
             TextAlign = ContentAlignment.MiddleLeft,
             Font = AppTheme.SmallFont,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Margin = new Padding(0, 0, 8, 0)
         };
         _footerStatusLabel = new Label
         {
-            Dock = DockStyle.Right,
+            Dock = DockStyle.Fill,
             AutoSize = false,
-            Width = 420,
+            AutoEllipsis = true,
             TextAlign = ContentAlignment.MiddleRight,
             Font = AppTheme.SmallFont,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Margin = new Padding(8, 0, 0, 0)
         };
-        _footerPanel.Controls.Add(_footerInfoLabel);
-        _footerPanel.Controls.Add(_footerStatusLabel);
+        footerGrid.Controls.Add(_footerInfoLabel, 0, 0);
+        footerGrid.Controls.Add(_footerStatusLabel, 1, 0);
+        _footerPanel.Controls.Add(footerGrid);
 
         // Assemble Shell Layout
         var workspaceColumn = new System.Windows.Forms.Panel
@@ -391,6 +423,17 @@ public partial class MainForm : AntdUI.Window, IThemeAware
         _authService.SessionExpired += OnSessionExpired;
         AppTheme.ThemeChanged += OnAppThemeChanged;
 
+        Load += (_, _) =>
+        {
+            ApplyWindowBoundsToScreen();
+            ApplyResponsiveShellLayout();
+        };
+        Resize += (_, _) => ApplyResponsiveShellLayout();
+        DpiChanged += (_, _) =>
+        {
+            ApplyWindowBoundsToScreen();
+            ApplyResponsiveShellLayout();
+        };
         Shown += async (_, _) => await InitializeShellAsync();
         ApplyTheme();
     }
@@ -497,11 +540,130 @@ public partial class MainForm : AntdUI.Window, IThemeAware
 
     private void ToggleSidebar()
     {
-        _sidebarCollapsed = !_sidebarCollapsed;
-        _sidebarMenu.Collapsed = _sidebarCollapsed;
-        _sidebarContainer.Width = _sidebarCollapsed ? 68 : 264;
-        _brandTitleLabel.Text = _sidebarCollapsed ? "L-ERP" : "LOGISTICS ERP";
-        _brandSubLabel.Visible = !_sidebarCollapsed;
+        _manualSidebarCollapsed = !_sidebarCollapsed;
+        SetSidebarCollapsed(_manualSidebarCollapsed.Value);
+    }
+
+    private void SetSidebarCollapsed(bool collapsed)
+    {
+        if (_sidebarCollapsed == collapsed && _sidebarContainer.Width == (collapsed ? 68 : 264))
+            return;
+
+        _sidebarCollapsed = collapsed;
+        _sidebarMenu.Collapsed = collapsed;
+        _sidebarContainer.Width = collapsed ? 68 : 264;
+        _brandTitleLabel.Text = collapsed ? "L-ERP" : "LOGISTICS ERP";
+        _brandSubLabel.Visible = !collapsed;
+    }
+
+    /// <summary>
+    /// Ensures MainForm minimum/maximum constraints stay compatible with the active monitor working area
+    /// (allowing free resizing between 1024x660 and 1920x1200 without exceeding host screen bounds).
+    /// </summary>
+    private void ApplyWindowBoundsToScreen()
+    {
+        var workArea = Screen.FromControl(this).WorkingArea;
+        if (workArea.Width <= 0 || workArea.Height <= 0) return;
+
+        var minW = Math.Min(1024, workArea.Width);
+        var minH = Math.Min(660, workArea.Height);
+        var maxW = Math.Max(minW, Math.Min(1920, workArea.Width));
+        var maxH = Math.Max(minH, Math.Min(1200, workArea.Height));
+
+        MinimumSize = new Size(minW, minH);
+        MaximumSize = new Size(maxW, maxH);
+
+        if (WindowState == FormWindowState.Normal)
+        {
+            var clampedW = Math.Clamp(Width, minW, maxW);
+            var clampedH = Math.Clamp(Height, minH, maxH);
+            if (clampedW != Width || clampedH != Height)
+                Size = new Size(clampedW, clampedH);
+        }
+    }
+
+    /// <summary>
+    /// Adapts sidebar collapse state and header wrapping cleanly across narrow (1024px) to wide (1920px) widths.
+    /// </summary>
+    private void ApplyResponsiveShellLayout()
+    {
+        if (IsDisposed || WindowState == FormWindowState.Minimized) return;
+
+        var isNarrowShell = ClientSize.Width < 1180;
+        if (_lastNarrowShell != isNarrowShell)
+        {
+            _lastNarrowShell = isNarrowShell;
+            _manualSidebarCollapsed = null;
+        }
+
+        var targetCollapsed = _manualSidebarCollapsed ?? isNarrowShell;
+        SetSidebarCollapsed(targetCollapsed);
+
+        var workspaceWidth = Math.Max(400, ClientSize.Width - _sidebarContainer.Width);
+        var twoRowHeader = workspaceWidth < 940;
+        if (_lastTwoRowHeader != twoRowHeader)
+        {
+            _lastTwoRowHeader = twoRowHeader;
+            _headerLayout.SuspendLayout();
+            try
+            {
+                _headerLayout.Controls.Clear();
+                _headerLayout.ColumnStyles.Clear();
+                _headerLayout.RowStyles.Clear();
+
+                if (twoRowHeader)
+                {
+                    _headerLayout.ColumnCount = 1;
+                    _headerLayout.RowCount = 2;
+                    _headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                    _headerLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                    _headerLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+                    _rightContextFlow.Dock = DockStyle.Top;
+                    _rightContextFlow.FlowDirection = FlowDirection.LeftToRight;
+                    _rightContextFlow.WrapContents = true;
+                    _rightContextFlow.Margin = new Padding(0, 6, 0, 0);
+
+                    // Reverse display order for LeftToRight so visual sequence matches 1-row layout
+                    _rightContextFlow.Controls.SetChildIndex(_branchSelect, 0);
+                    _rightContextFlow.Controls.SetChildIndex(_languageSelect, 1);
+                    _rightContextFlow.Controls.SetChildIndex(_themeToggleBtn, 2);
+                    _rightContextFlow.Controls.SetChildIndex(_bellHost, 3);
+                    _rightContextFlow.Controls.SetChildIndex(_userDropdown, 4);
+
+                    _headerLayout.Controls.Add(_leftNavPanel, 0, 0);
+                    _headerLayout.Controls.Add(_rightContextFlow, 0, 1);
+                }
+                else
+                {
+                    _headerLayout.ColumnCount = 2;
+                    _headerLayout.RowCount = 1;
+                    _headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                    _headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                    _headerLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+                    _rightContextFlow.Dock = DockStyle.Right;
+                    _rightContextFlow.FlowDirection = FlowDirection.RightToLeft;
+                    _rightContextFlow.WrapContents = false;
+                    _rightContextFlow.Margin = new Padding(0);
+
+                    _rightContextFlow.Controls.SetChildIndex(_userDropdown, 0);
+                    _rightContextFlow.Controls.SetChildIndex(_bellHost, 1);
+                    _rightContextFlow.Controls.SetChildIndex(_themeToggleBtn, 2);
+                    _rightContextFlow.Controls.SetChildIndex(_languageSelect, 3);
+                    _rightContextFlow.Controls.SetChildIndex(_branchSelect, 4);
+
+                    _headerLayout.Controls.Add(_leftNavPanel, 0, 0);
+                    _headerLayout.Controls.Add(_rightContextFlow, 1, 0);
+                }
+            }
+            finally
+            {
+                _headerLayout.ResumeLayout(true);
+            }
+        }
+
+        _branchSelect.Width = twoRowHeader ? 175 : (workspaceWidth >= 1180 ? 210 : 180);
     }
 
     private async void OnExternalNavigationRequested(object? sender, string moduleKey)
