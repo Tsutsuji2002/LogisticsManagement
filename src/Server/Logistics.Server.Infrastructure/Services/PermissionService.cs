@@ -26,6 +26,18 @@ public class PermissionService : IPermissionService
             return cached;
         }
 
+        var userActive = await _context.UserAccounts
+            .AsNoTracking()
+            .AnyAsync(u => u.Id == userId
+                && u.IsActive
+                && (!u.IsLockedOut || (u.LockoutEndAt.HasValue && u.LockoutEndAt <= DateTime.UtcNow)), cancellationToken);
+        if (!userActive)
+        {
+            var empty = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _cachedPermissions[userId] = empty;
+            return empty;
+        }
+
         // Check if user has SUPER_ADMIN role
         var isSuperAdmin = await _context.UserRoles
             .AsNoTracking()
@@ -71,6 +83,18 @@ public class PermissionService : IPermissionService
         if (_cachedBranches.TryGetValue(userId, out var cached))
         {
             return cached;
+        }
+
+        var userActive = await _context.UserAccounts
+            .AsNoTracking()
+            .AnyAsync(u => u.Id == userId
+                && u.IsActive
+                && (!u.IsLockedOut || (u.LockoutEndAt.HasValue && u.LockoutEndAt <= DateTime.UtcNow)), cancellationToken);
+        if (!userActive)
+        {
+            var empty = Array.Empty<long>();
+            _cachedBranches[userId] = empty;
+            return empty;
         }
 
         // Check if user is SuperAdmin (access to all branches)

@@ -2,6 +2,7 @@ using Logistics.Server.Application.Common.Events;
 using Logistics.Server.Application.Common.Exceptions;
 using Logistics.Server.Application.Common.Interfaces;
 using Logistics.Server.Application.Common.Models;
+using Logistics.Server.Application.Common.Security;
 using Logistics.Server.Application.Modules.Finance.DTOs;
 using Logistics.Server.Application.Modules.Finance.Services;
 using Logistics.Server.Domain.Entities.Configuration;
@@ -105,7 +106,7 @@ public class FinancialLedgerService : IFinancialLedgerService
             .AsNoTracking()
             .AsQueryable();
 
-        if (_currentUser.AccessibleBranchIds.Count > 0)
+        if (!_currentUser.IsInRole(AppRoles.SuperAdmin) && !_currentUser.IsInRole("Admin"))
         {
             var branches = _currentUser.AccessibleBranchIds;
             query = query.Where(e => branches.Contains(e.Customer.BranchId));
@@ -823,7 +824,7 @@ public class ShipmentChargeService : IShipmentChargeService
             .AsNoTracking()
             .AsQueryable();
 
-        if (_currentUser.AccessibleBranchIds.Count > 0)
+        if (!_currentUser.IsInRole(AppRoles.SuperAdmin) && !_currentUser.IsInRole("Admin"))
         {
             var branches = _currentUser.AccessibleBranchIds;
             query = query.Where(c => branches.Contains(c.Shipment.OriginBranchId) || branches.Contains(c.Shipment.DestinationBranchId));
@@ -998,7 +999,7 @@ public class InvoiceService : IInvoiceService
             .AsNoTracking()
             .AsQueryable();
 
-        if (_currentUser.AccessibleBranchIds.Count > 0)
+        if (!_currentUser.IsInRole(AppRoles.SuperAdmin) && !_currentUser.IsInRole("Admin"))
         {
             var branches = _currentUser.AccessibleBranchIds;
             query = query.Where(i => branches.Contains(i.Customer.BranchId));
@@ -1095,14 +1096,22 @@ public class InvoiceService : IInvoiceService
 
                 invoice.InvoiceItems.Add(invItem);
 
-                // If associated with a shipment charge, link it
+                // If associated with a shipment charge, validate ownership & prevent double invoicing
                 if (itemReq.ShipmentChargeId.HasValue)
                 {
-                    var charge = await _context.ShipmentCharges.FindAsync([itemReq.ShipmentChargeId.Value], cancellationToken);
-                    if (charge != null)
-                    {
-                        charge.IsInvoiced = true;
-                    }
+                    var charge = await _context.ShipmentCharges
+                        .Include(c => c.Shipment)
+                        .FirstOrDefaultAsync(c => c.Id == itemReq.ShipmentChargeId.Value, cancellationToken)
+                        ?? throw new NotFoundException("ShipmentCharge", itemReq.ShipmentChargeId.Value);
+
+                    if (charge.Shipment.CustomerId != customer.Id)
+                        throw new ConflictException($"Shipment charge #{charge.Id} belongs to a different customer.");
+
+                    if (charge.IsInvoiced || charge.InvoiceId.HasValue)
+                        throw new ConflictException($"Shipment charge #{charge.Id} has already been invoiced.");
+
+                    charge.IsInvoiced = true;
+                    charge.Invoice = invoice;
                 }
             }
         }
@@ -1153,12 +1162,19 @@ public class InvoiceService : IInvoiceService
 
         if (request.ShipmentChargeId.HasValue)
         {
-            var charge = await _context.ShipmentCharges.FindAsync([request.ShipmentChargeId.Value], cancellationToken);
-            if (charge != null)
-            {
-                charge.IsInvoiced = true;
-                charge.InvoiceId = invoice.Id;
-            }
+            var charge = await _context.ShipmentCharges
+                .Include(c => c.Shipment)
+                .FirstOrDefaultAsync(c => c.Id == request.ShipmentChargeId.Value, cancellationToken)
+                ?? throw new NotFoundException("ShipmentCharge", request.ShipmentChargeId.Value);
+
+            if (charge.Shipment.CustomerId != invoice.CustomerId)
+                throw new ConflictException($"Shipment charge #{charge.Id} belongs to a different customer.");
+
+            if (charge.IsInvoiced || charge.InvoiceId.HasValue)
+                throw new ConflictException($"Shipment charge #{charge.Id} has already been invoiced.");
+
+            charge.IsInvoiced = true;
+            charge.InvoiceId = invoice.Id;
         }
 
         invoice.InvoiceItems.Add(invItem);
@@ -1454,7 +1470,7 @@ public class PaymentService : IPaymentService
             .AsNoTracking()
             .AsQueryable();
 
-        if (_currentUser.AccessibleBranchIds.Count > 0)
+        if (!_currentUser.IsInRole(AppRoles.SuperAdmin) && !_currentUser.IsInRole("Admin"))
         {
             var branches = _currentUser.AccessibleBranchIds;
             query = query.Where(p => branches.Contains(p.Customer.BranchId));
@@ -1506,8 +1522,15 @@ public class PaymentService : IPaymentService
         var currency = await _context.Currencies.FindAsync([request.CurrencyId], cancellationToken)
             ?? throw new NotFoundException("Currency", request.CurrencyId);
 
-        var user = await _context.UserAccounts.FirstOrDefaultAsync(u => u.Username == _currentUser.Username, cancellationToken)
-            ?? await _context.UserAccounts.FirstAsync(cancellationToken);
+        var userId = _currentUser.UserId
+            ?? (await _context.UserAccounts.AsNoTracking()
+                .Where(u => u.Username == _currentUser.Username)
+                .Select(u => (long?)u.Id)
+                .FirstOrDefaultAsync(cancellationToken))
+            ?? throw new ForbiddenAccessException("Authenticated user context is required to register a payment.");
+
+        var ownsTx = _context.Database.IsRelational() && _context.Database.CurrentTransaction == null;
+        await using var tx = ownsTx ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
 
         var paymentNumber = await _numberSequence.GetNextNumberAsync("PAY", cancellationToken);
         var paymentDate = request.PaymentDate ?? DateTime.UtcNow;
@@ -1525,19 +1548,20 @@ public class PaymentService : IPaymentService
             BankAccount = request.BankAccount?.Trim(),
             Notes = request.Notes?.Trim(),
             Status = "Confirmed",
-            ConfirmedByUserId = user.Id,
+            ConfirmedByUserId = userId,
             ConfirmedAt = DateTime.UtcNow,
             CreatedBy = _currentUser.Username
         };
 
         _context.Payments.Add(payment);
+        await _context.SaveChangesAsync(cancellationToken);
 
         // 1. Post to Financial Ledger: Credit customer receivable (reducing balance)
         await _ledger.PostEntryAsync(
             customerId: customer.Id,
             entryType: "PaymentReceipt",
             referenceType: "Payment",
-            referenceId: 0, // Will update or set after save
+            referenceId: payment.Id,
             referenceNumber: paymentNumber,
             debitAmount: 0m,
             creditAmount: request.Amount,
@@ -1584,9 +1608,12 @@ public class PaymentService : IPaymentService
 
             foreach (var allocReq in request.InitialAllocations)
             {
-                await AllocatePaymentInternalAsync(payment, allocReq.InvoiceId, allocReq.Amount, user.Id, cancellationToken);
+                await AllocatePaymentInternalAsync(payment, allocReq.InvoiceId, allocReq.Amount, userId, cancellationToken);
             }
         }
+
+        if (tx != null)
+            await tx.CommitAsync(cancellationToken);
 
         await _audit.RecordAsync("RegisterPayment", "finance", "Payments", payment.Id.ToString(),
             null, new { payment.PaymentNumber, payment.Amount, payment.PaymentMethod }, notes: null, cancellationToken: cancellationToken);
@@ -1808,7 +1835,7 @@ public class CustomerBalanceService : ICustomerBalanceService
             .AsNoTracking()
             .AsQueryable();
 
-        if (_currentUser.AccessibleBranchIds.Count > 0)
+        if (!_currentUser.IsInRole(AppRoles.SuperAdmin) && !_currentUser.IsInRole("Admin"))
         {
             var branches = _currentUser.AccessibleBranchIds;
             query = query.Where(b => branches.Contains(b.Customer.BranchId));

@@ -1,14 +1,20 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Logistics.Server.Application.Common.Events;
 using Logistics.Server.Application.Common.Exceptions;
 using Logistics.Server.Application.Common.Interfaces;
 using Logistics.Server.Application.Common.Models;
+using Logistics.Server.Application.Common.Security;
 using Logistics.Server.Application.Modules.Carrier.DTOs;
 using Logistics.Server.Application.Modules.Carrier.Services;
 using Logistics.Server.Domain.Entities.Carrier;
+using Logistics.Server.Domain.Entities.Shipping;
 using Logistics.Server.Infrastructure.Persistence;
 using Logistics.Server.Integrations.Carriers;
 using Logistics.Shared.Contracts.Pagination;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Logistics.Server.Infrastructure.Services;
@@ -608,9 +614,26 @@ public class CarrierIntegrationServiceImpl : ICarrierIntegrationService
         _outbox = outbox;
     }
 
+    private void EnsureShipmentBranchAccess(Domain.Entities.Shipping.Shipment shipment)
+    {
+        if (_currentUser.IsInRole(AppRoles.SuperAdmin) || _currentUser.IsInRole("Admin")) return;
+        if (!_currentUser.HasBranchAccess(shipment.OriginBranchId) &&
+            !_currentUser.HasBranchAccess(shipment.DestinationBranchId))
+        {
+            throw new ForbiddenAccessException();
+        }
+    }
+
     public async Task<CarrierBookingResultDto> BookShipmentAsync(CarrierBookShipmentRequest request, CancellationToken cancellationToken = default)
     {
         var shipment = await ResolveShipmentAsync(request.ShipmentIdentifier, cancellationToken);
+        EnsureShipmentBranchAccess(shipment);
+
+        if (!string.IsNullOrWhiteSpace(shipment.CarrierTrackingNumber))
+            throw new ConflictException($"Shipment '{shipment.TrackingNumber}' is already booked with carrier tracking '{shipment.CarrierTrackingNumber}'.");
+
+        if (ShipmentStateHelper.IsTerminal(shipment.ShipmentStatus))
+            throw new ConflictException($"Cannot book shipment in terminal status '{shipment.ShipmentStatus}'.");
 
         if (shipment.AssignedCarrierId == null)
             throw new ConflictException("Shipment has no assigned carrier. Assign a carrier before booking.");
@@ -700,6 +723,7 @@ public class CarrierIntegrationServiceImpl : ICarrierIntegrationService
     public async Task<CarrierCancelResultDto> CancelShipmentAsync(CarrierCancelShipmentRequest request, CancellationToken cancellationToken = default)
     {
         var shipment = await ResolveShipmentAsync(request.ShipmentIdentifier, cancellationToken);
+        EnsureShipmentBranchAccess(shipment);
 
         if (string.IsNullOrEmpty(shipment.CarrierTrackingNumber))
             return new CarrierCancelResultDto { Success = true, ErrorMessage = "No carrier booking to cancel." };
@@ -837,11 +861,19 @@ public class CarrierWebhookServiceImpl : ICarrierWebhookService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<CarrierWebhookServiceImpl> _logger;
+    private readonly IHostEnvironment? _environment;
+    private readonly IOutboxService? _outbox;
 
-    public CarrierWebhookServiceImpl(ApplicationDbContext context, ILogger<CarrierWebhookServiceImpl> logger)
+    public CarrierWebhookServiceImpl(
+        ApplicationDbContext context,
+        ILogger<CarrierWebhookServiceImpl> logger,
+        IHostEnvironment? environment = null,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _logger = logger;
+        _environment = environment;
+        _outbox = outbox;
     }
 
     public async Task<CarrierWebhookLogDto> ProcessWebhookAsync(string carrierCode, string payloadJson, string? signature, string clientIp, string webhookUrl, CancellationToken cancellationToken = default)
@@ -849,6 +881,42 @@ public class CarrierWebhookServiceImpl : ICarrierWebhookService
         var carrier = await _context.Carriers.AsNoTracking()
             .FirstOrDefaultAsync(c => c.Code == carrierCode.ToUpperInvariant(), cancellationToken)
             ?? throw new NotFoundException("Carrier", carrierCode);
+
+        var activeSecretConfig = await _context.CarrierConfigurations
+            .AsNoTracking()
+            .Where(c => c.CarrierId == carrier.Id && c.IsActive && !string.IsNullOrEmpty(c.WebhookSecret))
+            .OrderByDescending(c => c.Environment == "Production")
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (activeSecretConfig?.WebhookSecret is { Length: > 0 } secret)
+        {
+            if (string.IsNullOrWhiteSpace(signature) || !VerifyHmacSignature(payloadJson, secret, signature))
+            {
+                _context.CarrierWebhookLogs.Add(new CarrierWebhookLog
+                {
+                    CarrierId = carrier.Id,
+                    WebhookUrl = webhookUrl,
+                    HttpMethod = "POST",
+                    PayloadJson = payloadJson,
+                    ClientIpAddress = clientIp,
+                    ProcessedAt = DateTime.UtcNow,
+                    ResponseStatusCode = 403,
+                    ProcessedSuccessfully = false,
+                    ErrorDetails = "Invalid or missing HMAC webhook signature."
+                });
+                await _context.SaveChangesAsync(cancellationToken);
+                throw new ForbiddenAccessException("Invalid or missing carrier webhook signature.");
+            }
+        }
+        else if (_environment != null && !_environment.IsDevelopment())
+        {
+            throw new ForbiddenAccessException($"Carrier '{carrier.Code}' does not have an active webhook secret configured.");
+        }
+        else
+        {
+            _logger.LogWarning("Accepted unsigned webhook in {Environment} for carrier {CarrierCode} because no WebhookSecret is configured.",
+                _environment?.EnvironmentName ?? "Unknown", carrier.Code);
+        }
 
         var log = new CarrierWebhookLog
         {
@@ -864,21 +932,100 @@ public class CarrierWebhookServiceImpl : ICarrierWebhookService
 
         try
         {
-            // Parse tracking event from webhook payload
+            string trackingNumber = "UNKNOWN";
+            string eventCode = "WEBHOOK";
+            string description = "Webhook event received";
+            string? explicitEventId = null;
+
+            using (var doc = JsonDocument.Parse(payloadJson))
+            {
+                var root = doc.RootElement;
+                trackingNumber = ReadJsonString(root, "tracking_number", "trackingNumber", "carrier_tracking_number", "order_code", "OrderCode") ?? "UNKNOWN";
+                eventCode = ReadJsonString(root, "status", "event_code", "eventCode", "Status") ?? "WEBHOOK";
+                description = ReadJsonString(root, "description", "message", "status_name", "reason") ?? $"Webhook status: {eventCode}";
+                explicitEventId = ReadJsonString(root, "event_id", "external_event_id", "eventId", "id");
+            }
+
+            var externalEventId = !string.IsNullOrWhiteSpace(explicitEventId)
+                ? explicitEventId!
+                : ComputeDeterministicEventId(carrier.Code, payloadJson);
+
+            log.ExternalEventId = externalEventId;
+
+            // Idempotency / replay protection
+            var alreadyProcessed = await _context.CarrierTrackingEvents
+                .AsNoTracking()
+                .AnyAsync(e => e.CarrierId == carrier.Id && e.ExternalEventId == externalEventId, cancellationToken);
+
+            if (alreadyProcessed)
+            {
+                log.ErrorDetails = "Duplicate webhook event ignored (idempotent replay protection).";
+                _context.CarrierWebhookLogs.Add(log);
+                await _context.SaveChangesAsync(cancellationToken);
+                return MapWebhookLogToDto(log, carrier.Code);
+            }
+
+            var shipment = await _context.Shipments
+                .FirstOrDefaultAsync(s => s.AssignedCarrierId == carrier.Id && s.CarrierTrackingNumber == trackingNumber, cancellationToken);
+
             var trackingEvent = new CarrierTrackingEvent
             {
                 CarrierId = carrier.Id,
-                CarrierTrackingNumber = "PENDING_PARSE",
-                ExternalEventId = Guid.NewGuid().ToString("N"),
-                EventCode = "WEBHOOK",
-                EventDescription = "Webhook event received",
+                CarrierTrackingNumber = trackingNumber,
+                ExternalEventId = externalEventId,
+                EventCode = eventCode,
+                EventDescription = description,
                 EventTimestamp = DateTime.UtcNow,
                 RawPayloadJson = payloadJson,
-                ProcessedStatus = "Pending"
+                ProcessedStatus = shipment != null ? "Processed" : "Pending",
+                ProcessedShipmentId = shipment?.Id,
+                ProcessedAt = shipment != null ? DateTime.UtcNow : null
             };
 
+            if (shipment != null)
+            {
+                var mapping = await _context.CarrierTrackingMappings
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(m => m.CarrierId == carrier.Id && m.ExternalStatusCode == eventCode && m.IsActive, cancellationToken);
+
+                if (mapping != null &&
+                    !string.Equals(shipment.ShipmentStatus, mapping.InternalShipmentStatus, StringComparison.OrdinalIgnoreCase) &&
+                    ShipmentStateHelper.IsValidTransition(shipment.ShipmentStatus, mapping.InternalShipmentStatus))
+                {
+                    shipment.ShipmentStatus = mapping.InternalShipmentStatus;
+                    if (string.Equals(mapping.InternalShipmentStatus, "Delivered", StringComparison.OrdinalIgnoreCase))
+                        shipment.ActualDeliveryDate ??= DateTime.UtcNow;
+                    shipment.UpdatedAt = DateTime.UtcNow;
+                    shipment.UpdatedBy = $"Webhook.{carrier.Code}";
+
+                    _context.ShipmentStatusHistories.Add(new ShipmentStatusHistory
+                    {
+                        ShipmentId = shipment.Id,
+                        Status = mapping.InternalShipmentStatus,
+                        Notes = $"Carrier webhook ({carrier.Code}: {eventCode}): {description}",
+                        ChangedAt = DateTime.UtcNow,
+                        Source = "CarrierWebhook",
+                        CreatedAt = DateTime.UtcNow
+                    });
+
+                    if (string.Equals(mapping.InternalShipmentStatus, "Delivered", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _outbox?.Enqueue(
+                            new DeliveryCompletedIntegrationEvent(shipment.Id, shipment.TrackingNumber, shipment.CustomerId,
+                                shipment.DestinationBranchId, shipment.ActualDeliveryDate ?? DateTime.UtcNow, null),
+                            "Shipment", shipment.Id.ToString());
+                    }
+                }
+            }
+
             _context.CarrierTrackingEvents.Add(trackingEvent);
-            log.ExternalEventId = trackingEvent.ExternalEventId;
+        }
+        catch (JsonException ex)
+        {
+            log.ProcessedSuccessfully = false;
+            log.ErrorDetails = $"Malformed webhook JSON: {ex.Message}";
+            log.ResponseStatusCode = 400;
+            _logger.LogWarning(ex, "Malformed webhook JSON for carrier {CarrierCode}.", carrierCode);
         }
         catch (Exception ex)
         {
@@ -892,6 +1039,39 @@ public class CarrierWebhookServiceImpl : ICarrierWebhookService
         await _context.SaveChangesAsync(cancellationToken);
 
         return MapWebhookLogToDto(log, carrier.Code);
+    }
+
+    private static string? ReadJsonString(JsonElement root, params string[] candidateNames)
+    {
+        foreach (var name in candidateNames)
+        {
+            if (root.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String)
+                return prop.GetString();
+        }
+        return null;
+    }
+
+    private static string ComputeDeterministicEventId(string carrierCode, string payload)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{carrierCode}:{payload}"));
+        return Convert.ToHexString(hash)[..32];
+    }
+
+    private static bool VerifyHmacSignature(string payload, string secret, string providedSignature)
+    {
+        var normalizedProvided = providedSignature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase)
+            ? providedSignature[7..]
+            : providedSignature;
+
+        var keyBytes = Encoding.UTF8.GetBytes(secret);
+        var payloadBytes = Encoding.UTF8.GetBytes(payload);
+        var computed = HMACSHA256.HashData(keyBytes, payloadBytes);
+        var expectedHex = Convert.ToHexString(computed);
+        var actualBytes = Encoding.UTF8.GetBytes(normalizedProvided.Trim().ToUpperInvariant());
+        var expectedBytes = Encoding.UTF8.GetBytes(expectedHex);
+
+        return actualBytes.Length == expectedBytes.Length &&
+               CryptographicOperations.FixedTimeEquals(actualBytes, expectedBytes);
     }
 
     public async Task<PagedResult<CarrierWebhookLogDto>> GetWebhookLogsAsync(string? carrierIdentifier, DateTime? from, DateTime? to, bool? processedSuccessfully, PagedRequest request, CancellationToken cancellationToken = default)
@@ -1135,17 +1315,20 @@ public class CarrierTrackingSyncOrchestrator : ICarrierTrackingSyncOrchestrator
     private readonly ICarrierAdapterFactory _adapterFactory;
     private readonly ICarrierSyncJobService _syncJobService;
     private readonly ILogger<CarrierTrackingSyncOrchestrator> _logger;
+    private readonly IOutboxService? _outbox;
 
     public CarrierTrackingSyncOrchestrator(
         ApplicationDbContext context,
         ICarrierAdapterFactory adapterFactory,
         ICarrierSyncJobService syncJobService,
-        ILogger<CarrierTrackingSyncOrchestrator> logger)
+        ILogger<CarrierTrackingSyncOrchestrator> logger,
+        IOutboxService? outbox = null)
     {
         _context = context;
         _adapterFactory = adapterFactory;
         _syncJobService = syncJobService;
         _logger = logger;
+        _outbox = outbox;
     }
 
     public async Task SyncAllActiveCarriersAsync(CancellationToken cancellationToken = default)
@@ -1226,11 +1409,33 @@ public class CarrierTrackingSyncOrchestrator : ICarrierTrackingSyncOrchestrator
                         && m.ExternalStatusCode == tracking.CurrentStatus
                         && m.IsActive, ct);
 
-                if (mapping != null && mapping.InternalShipmentStatus != shipment.ShipmentStatus)
+                if (mapping != null &&
+                    !string.Equals(mapping.InternalShipmentStatus, shipment.ShipmentStatus, StringComparison.OrdinalIgnoreCase) &&
+                    ShipmentStateHelper.IsValidTransition(shipment.ShipmentStatus, mapping.InternalShipmentStatus))
                 {
                     shipment.ShipmentStatus = mapping.InternalShipmentStatus;
+                    if (string.Equals(mapping.InternalShipmentStatus, "Delivered", StringComparison.OrdinalIgnoreCase))
+                        shipment.ActualDeliveryDate ??= DateTime.UtcNow;
                     shipment.UpdatedAt = DateTime.UtcNow;
                     shipment.UpdatedBy = "System.TrackingSync";
+
+                    _context.ShipmentStatusHistories.Add(new ShipmentStatusHistory
+                    {
+                        ShipmentId = shipment.Id,
+                        Status = mapping.InternalShipmentStatus,
+                        Notes = $"Carrier tracking sync ({carrier.Code}: {tracking.CurrentStatus}).",
+                        ChangedAt = DateTime.UtcNow,
+                        Source = "CarrierSync",
+                        CreatedAt = DateTime.UtcNow
+                    });
+
+                    if (string.Equals(mapping.InternalShipmentStatus, "Delivered", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _outbox?.Enqueue(
+                            new DeliveryCompletedIntegrationEvent(shipment.Id, shipment.TrackingNumber, shipment.CustomerId,
+                                shipment.DestinationBranchId, shipment.ActualDeliveryDate ?? DateTime.UtcNow, null),
+                            "Shipment", shipment.Id.ToString());
+                    }
                 }
 
                 successCount++;

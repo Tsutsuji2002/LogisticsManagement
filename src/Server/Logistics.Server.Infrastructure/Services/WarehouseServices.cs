@@ -1123,6 +1123,11 @@ public class InventoryService : IInventoryService
 
     public async Task<StockTransferDto> CreateTransferAsync(CreateStockTransferRequest request, CancellationToken cancellationToken = default)
     {
+        if (request.SourceWarehouseId == request.DestinationWarehouseId)
+            throw new ConflictException("Source warehouse and destination warehouse cannot be the same.");
+        if (request.Quantity <= 0)
+            throw new ConflictException("Transfer quantity must be greater than zero.");
+
         var sourceWh = await _context.Warehouses.FindAsync([request.SourceWarehouseId], cancellationToken)
             ?? throw new NotFoundException("Warehouse", request.SourceWarehouseId);
         EnsureWarehouseAccess(sourceWh.BranchId);
@@ -1329,18 +1334,42 @@ public class InventoryService : IInventoryService
         if (res.Status != "Active")
             throw new ConflictException($"Reservation is not active (status: '{res.Status}').");
 
-        // Deduct both allocated and on-hand
+        // Deduct both allocated and on-hand atomically after strict sufficiency validation
+        var ownsTx = _context.Database.IsRelational() && _context.Database.CurrentTransaction == null;
+        await using var tx = ownsTx ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+
         var balance = await _context.InventoryBalances
             .FirstOrDefaultAsync(b => b.WarehouseId == res.WarehouseId
                 && b.WarehouseLocationId == res.LocationId
                 && b.ProductId == res.ProductId
-                && b.LotId == res.LotId, cancellationToken);
+                && b.LotId == res.LotId, cancellationToken)
+            ?? throw new ConflictException("No matching inventory balance exists for this reservation.");
 
-        if (balance != null)
+        if (balance.QuantityOnHand < res.ReservedQuantity || balance.QuantityAllocated < res.ReservedQuantity)
         {
-            balance.QuantityAllocated = Math.Max(0, balance.QuantityAllocated - res.ReservedQuantity);
-            balance.QuantityOnHand = Math.Max(0, balance.QuantityOnHand - res.ReservedQuantity);
+            throw new ConflictException(
+                $"Insufficient balance to consume reservation {res.Id}. OnHand={balance.QuantityOnHand}, Allocated={balance.QuantityAllocated}, Reserved={res.ReservedQuantity}.");
         }
+
+        var balanceBefore = balance.QuantityOnHand;
+        balance.QuantityAllocated -= res.ReservedQuantity;
+        balance.QuantityOnHand -= res.ReservedQuantity;
+
+        var employeeId = _currentUser.EmployeeId;
+        if (!employeeId.HasValue && _currentUser.UserId.HasValue)
+        {
+            employeeId = await _context.UserAccounts.AsNoTracking()
+                .Where(u => u.Id == _currentUser.UserId.Value)
+                .Select(u => u.EmployeeId)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        employeeId ??= await _context.Employees.AsNoTracking()
+            .OrderBy(e => e.Id)
+            .Select(e => (long?)e.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (!employeeId.HasValue)
+            throw new ConflictException("Cannot record inventory dispatch transaction without an employee reference.");
 
         res.Status = "Fulfilled";
         res.FulfilledAt = DateTime.UtcNow;
@@ -1357,7 +1386,7 @@ public class InventoryService : IInventoryService
             ReferenceType = "SalesOrder",
             ReferenceId = res.OrderId,
             ReferenceNumber = $"ORD-{res.OrderId}",
-            PerformedByEmployeeId = 1,
+            PerformedByEmployeeId = employeeId.Value,
             TransactionDate = DateTime.UtcNow,
             Notes = $"Reservation {res.Id} consumed for order {res.OrderId}",
             CreatedBy = _currentUser.Username
@@ -1369,12 +1398,15 @@ public class InventoryService : IInventoryService
             LocationId = res.LocationId,
             LotId = res.LotId,
             Quantity = res.ReservedQuantity,
-            BalanceBefore = (balance?.QuantityOnHand ?? 0) + res.ReservedQuantity,
-            BalanceAfter = balance?.QuantityOnHand ?? 0
+            BalanceBefore = balanceBefore,
+            BalanceAfter = balance.QuantityOnHand
         });
 
         _context.InventoryTransactions.Add(txn);
         await _context.SaveChangesAsync(cancellationToken);
+
+        if (tx != null)
+            await tx.CommitAsync(cancellationToken);
 
         return MapToReservationDto(res);
     }
@@ -1815,26 +1847,22 @@ public class ParcelHandlingService : IParcelHandlingService
         if (package.PackageStatus == "Received")
             throw new ConflictException($"Package {package.Barcode} is already received at facility.");
 
+        var ownsTx = _context.Database.IsRelational() && _context.Database.CurrentTransaction == null;
+        await using var tx = ownsTx ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+
         package.PackageStatus = "Received";
         package.UpdatedAt = DateTime.UtcNow;
         package.UpdatedBy = _currentUser.Username;
 
-        // Coordinate shipment lifecycle status transition
+        // Coordinate shipment lifecycle status transition atomically within transaction
         if (shipment.ShipmentStatus == "PickedUp")
         {
-            try
+            await _shipmentService.TransitionStatusAsync(shipment.Id.ToString(), new ShipmentStatusTransitionRequest
             {
-                await _shipmentService.TransitionStatusAsync(shipment.Id.ToString(), new ShipmentStatusTransitionRequest
-                {
-                    TargetStatus = "InSortingHub",
-                    LocationWarehouseId = warehouse.Id,
-                    Notes = $"Received at hub {warehouse.Code}"
-                }, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Could not transition shipment {Tracking} to InSortingHub.", shipment.TrackingNumber);
-            }
+                TargetStatus = "InSortingHub",
+                LocationWarehouseId = warehouse.Id,
+                Notes = $"Received at hub {warehouse.Code}"
+            }, cancellationToken);
         }
 
         var handlingEvent = new ParcelHandlingEvent
@@ -1851,6 +1879,9 @@ public class ParcelHandlingService : IParcelHandlingService
 
         _context.ParcelHandlingEvents.Add(handlingEvent);
         await _context.SaveChangesAsync(cancellationToken);
+
+        if (tx != null)
+            await tx.CommitAsync(cancellationToken);
 
         await _audit.RecordAsync("ReceiveParcel", "warehouse", "ParcelHandlingEvents", handlingEvent.Id.ToString(),
             null, new { package.Barcode, warehouse.Code, EventType = "Unloaded" }, notes: null, cancellationToken: cancellationToken);
@@ -2146,10 +2177,81 @@ public class ParcelHandlingService : IParcelHandlingService
         if (dispatch.Status == "Dispatched")
             throw new ConflictException("Dispatch is already dispatched.");
 
+        var ownsTx = _context.Database.IsRelational() && _context.Database.CurrentTransaction == null;
+        await using var tx = ownsTx ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+
         dispatch.Status = "Dispatched";
         dispatch.DispatchedAt = DateTime.UtcNow;
         dispatch.UpdatedAt = DateTime.UtcNow;
         dispatch.UpdatedBy = _currentUser.Username;
+
+        // Deduct physical inventory if DispatchItems are present
+        if (dispatch.DispatchItems.Count > 0)
+        {
+            var txnNumber = await _numberSequence.GetNextNumberAsync("INV-TXN", cancellationToken);
+            var txn = new InventoryTransaction
+            {
+                TransactionNumber = txnNumber,
+                WarehouseId = dispatch.WarehouseId,
+                TransactionType = "Dispatch",
+                ReferenceType = "WarehouseDispatch",
+                ReferenceId = dispatch.Id,
+                ReferenceNumber = dispatch.DispatchNumber,
+                PerformedByEmployeeId = employeeId,
+                TransactionDate = DateTime.UtcNow,
+                Notes = $"Inventory dispatch confirmation {dispatch.DispatchNumber}",
+                CreatedBy = _currentUser.Username
+            };
+
+            foreach (var item in dispatch.DispatchItems)
+            {
+                var qtyToDeduct = item.PickedQuantity > 0 ? item.PickedQuantity : item.RequestedQuantity;
+                if (qtyToDeduct <= 0) continue;
+
+                if (item.SourceLocationId <= 0)
+                    throw new ConflictException($"Dispatch item for product #{item.ProductId} requires SourceLocationId to deduct inventory.");
+                var locId = item.SourceLocationId;
+
+                long? lotId = null;
+                if (!string.IsNullOrWhiteSpace(item.LotNumber))
+                {
+                    lotId = await _context.InventoryLots.AsNoTracking()
+                        .Where(l => l.ProductId == item.ProductId && l.LotNumber == item.LotNumber)
+                        .Select(l => (long?)l.Id)
+                        .FirstOrDefaultAsync(cancellationToken);
+                }
+
+                var balance = await _context.InventoryBalances
+                    .FirstOrDefaultAsync(b => b.WarehouseId == dispatch.WarehouseId
+                        && b.WarehouseLocationId == locId
+                        && b.ProductId == item.ProductId
+                        && b.LotId == lotId, cancellationToken)
+                    ?? throw new ConflictException($"No inventory balance found at warehouse {dispatch.WarehouseId}, location {locId}, product {item.ProductId}.");
+
+                var available = balance.QuantityOnHand - balance.QuantityAllocated;
+                if (available < qtyToDeduct)
+                {
+                    throw new ConflictException(
+                        $"Insufficient available inventory for product #{item.ProductId} at location #{locId}. Available={available}, Requested={qtyToDeduct}.");
+                }
+
+                var balanceBefore = balance.QuantityOnHand;
+                balance.QuantityOnHand -= qtyToDeduct;
+
+                txn.TransactionItems.Add(new InventoryTransactionItem
+                {
+                    ProductId = item.ProductId,
+                    LocationId = locId,
+                    LotId = lotId,
+                    Quantity = qtyToDeduct,
+                    BalanceBefore = balanceBefore,
+                    BalanceAfter = balance.QuantityOnHand
+                });
+            }
+
+            if (txn.TransactionItems.Count > 0)
+                _context.InventoryTransactions.Add(txn);
+        }
 
         // For parcel packages: update status & record handling events & transition shipment status
         foreach (var dp in dispatch.DispatchPackages)
@@ -2171,26 +2273,22 @@ public class ParcelHandlingService : IParcelHandlingService
                 Notes = $"Dispatched via {dispatch.DispatchNumber}"
             });
 
-            // If shipment is in sorting hub, transition to InTransit
+            // If shipment is in sorting hub, transition to InTransit atomically
             if (pkg.Shipment.ShipmentStatus == "InSortingHub")
             {
-                try
+                await _shipmentService.TransitionStatusAsync(pkg.Shipment.Id.ToString(), new ShipmentStatusTransitionRequest
                 {
-                    await _shipmentService.TransitionStatusAsync(pkg.Shipment.Id.ToString(), new ShipmentStatusTransitionRequest
-                    {
-                        TargetStatus = "InTransit",
-                        LocationWarehouseId = dispatch.WarehouseId,
-                        Notes = $"Dispatched from {dispatch.Warehouse.Code}"
-                    }, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Could not transition shipment {Tracking} to InTransit on dispatch.", pkg.Shipment.TrackingNumber);
-                }
+                    TargetStatus = "InTransit",
+                    LocationWarehouseId = dispatch.WarehouseId,
+                    Notes = $"Dispatched from {dispatch.Warehouse.Code}"
+                }, cancellationToken);
             }
         }
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        if (tx != null)
+            await tx.CommitAsync(cancellationToken);
 
         await _audit.RecordAsync("ConfirmDispatch", "warehouse", "WarehouseDispatches", dispatch.Id.ToString(),
             new { Status = "Draft" }, new { Status = "Dispatched", dispatch.DispatchedAt },

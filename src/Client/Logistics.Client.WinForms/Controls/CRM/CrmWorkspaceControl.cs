@@ -37,14 +37,7 @@ public sealed class CrmWorkspaceControl : ModuleViewBase
         _branchContext = branchContext;
         _logger = logger;
 
-        var split = new SplitContainer
-        {
-            Dock = DockStyle.Fill,
-            Orientation = Orientation.Horizontal,
-            SplitterDistance = 320,
-            Panel1MinSize = 200,
-            Panel2MinSize = 180
-        };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 320, 200, 180);
 
         _customersGrid = new PagedDataGridControl("Khách hàng (CRM)", "Quản lý hồ sơ khách hàng, liên hệ, địa chỉ, hợp đồng và bảng giá.");
         if (_auth.HasPermission(ClientPermissions.Crm.CustomersCreate))

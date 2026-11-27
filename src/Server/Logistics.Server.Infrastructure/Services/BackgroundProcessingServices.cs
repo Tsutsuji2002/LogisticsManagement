@@ -104,6 +104,7 @@ public sealed class OutboxProcessorService : IOutboxProcessorService
             .GroupBy(h => h.EventType, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
+        var claimedSet = new HashSet<object>(claimed, ReferenceEqualityComparer.Instance);
         int processedCount = 0;
 
         foreach (var msg in claimed)
@@ -155,6 +156,13 @@ public sealed class OutboxProcessorService : IOutboxProcessorService
             }
             catch (Exception ex)
             {
+                // Detach any dirty entities staged by the failing handler while keeping claimed batch messages tracked
+                foreach (var entry in _context.ChangeTracker.Entries().ToList())
+                {
+                    if (!claimedSet.Contains(entry.Entity))
+                        entry.State = EntityState.Detached;
+                }
+
                 msg.RetryCount += 1;
                 msg.LockedAt = null;
                 msg.LockedBy = null;
@@ -529,6 +537,7 @@ public sealed class BackgroundJobService : IBackgroundJobService
         if (claimed.Count == 0) return 0;
 
         var handlers = _handlers.ToDictionary(h => h.JobName, StringComparer.OrdinalIgnoreCase);
+        var claimedSet = new HashSet<object>(claimed, ReferenceEqualityComparer.Instance);
         int processed = 0;
 
         foreach (var job in claimed)
@@ -597,6 +606,13 @@ public sealed class BackgroundJobService : IBackgroundJobService
             }
             catch (Exception ex)
             {
+                // Detach any dirty entities staged by failing job while keeping claimed batch jobs tracked
+                foreach (var entry in _context.ChangeTracker.Entries().ToList())
+                {
+                    if (!claimedSet.Contains(entry.Entity))
+                        entry.State = EntityState.Detached;
+                }
+
                 job.LockedAt = null;
                 job.LockedBy = null;
                 job.ExceptionDetails = ex.Message;

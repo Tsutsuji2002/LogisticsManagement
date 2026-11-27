@@ -589,13 +589,20 @@ public class OrderService : IOrderService
             throw new ConflictException("Cannot cancel an order that has already been delivered.");
         }
 
-        // Check if any linked shipments have already transitioned to InTransit or Delivered
+        // Check if any linked shipments have already started physical fulfillment or finished
         var hasActiveShipments = await _context.Shipments
-            .AnyAsync(s => s.OrderId == order.Id && (s.ShipmentStatus == "InTransit" || s.ShipmentStatus == "Delivered"), cancellationToken);
+            .AnyAsync(s => s.OrderId == order.Id &&
+                (s.ShipmentStatus == "PickedUp" ||
+                 s.ShipmentStatus == "InSortingHub" ||
+                 s.ShipmentStatus == "InTransit" ||
+                 s.ShipmentStatus == "OutForDelivery" ||
+                 s.ShipmentStatus == "Delivered" ||
+                 s.ShipmentStatus == "Returning" ||
+                 s.ShipmentStatus == "Returned"), cancellationToken);
 
         if (hasActiveShipments)
         {
-            throw new ConflictException("Cannot cancel order because linked shipments are already in transit or delivered.");
+            throw new ConflictException("Cannot cancel order because linked shipments are already picked up, in transit, delivered, or returning.");
         }
 
         var oldStatus = order.OrderStatus;

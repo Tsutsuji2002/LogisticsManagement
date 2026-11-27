@@ -119,7 +119,7 @@ public sealed class CodWorkspaceControl : ModuleViewBase
 
     private void BuildRemittancesTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 320 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 320);
         _remittancesGrid = new PagedDataGridControl("Bảng kê hoàn trả COD cho khách hàng", "Tổng COD gộp, phí dịch vụ khấu trừ và thực chi hoàn trả ròng do backend tính.");
 
         if (_auth.HasPermission(ClientPermissions.Cod.RemittancesCreate))

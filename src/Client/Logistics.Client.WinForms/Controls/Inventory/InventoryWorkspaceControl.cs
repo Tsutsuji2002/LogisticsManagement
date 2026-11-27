@@ -62,20 +62,29 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
         BuildMovementsTab();
         BuildTrackingTab();
 
-        _tabs.TabPages.AddRange([_tabBalances, _tabReceipts, _tabMovements, _tabTracking]);
+        if (_auth.HasAnyPermission(ClientPermissions.Inventory.InventoryRead, ClientPermissions.Inventory.InventoryManage))
+            _tabs.TabPages.Add(_tabBalances);
+        if (_auth.HasAnyPermission(ClientPermissions.Inventory.InventoryRead, ClientPermissions.Warehouse.ReceiptsManage))
+            _tabs.TabPages.Add(_tabReceipts);
+        if (_auth.HasAnyPermission(ClientPermissions.Inventory.InventoryRead, ClientPermissions.Inventory.AdjustmentsManage, ClientPermissions.Inventory.TransfersManage, ClientPermissions.Inventory.ReservationsManage))
+            _tabs.TabPages.Add(_tabMovements);
+        if (_auth.HasAnyPermission(ClientPermissions.Inventory.InventoryRead, ClientPermissions.Inventory.LotsManage, ClientPermissions.Inventory.SerialNumbersManage))
+            _tabs.TabPages.Add(_tabTracking);
+
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
     }
 
     public void SelectSection(string navKey)
     {
-        _tabs.SelectedTab = navKey switch
+        var tab = navKey switch
         {
             "Inventory.Receipts" => _tabReceipts,
             "Inventory.Movements" => _tabMovements,
             "Inventory.Tracking" => _tabTracking,
             _ => _tabBalances
         };
+        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
     }
 
     private void BuildTopFilterBar()
@@ -90,7 +99,7 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
 
     private void BuildBalancesTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 300, Panel1MinSize = 180 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 300, 180);
         _balancesGrid = new PagedDataGridControl("Số dư tồn kho thực tế (InventoryBalances)", "Chỉ đọc từ server: OnHand, Allocated, Available, Damaged.");
         _balancesGrid.ReloadRequested += async (_, _) => await LoadBalancesTabAsync();
 
@@ -110,7 +119,7 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
 
     private void BuildReceiptsTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 300 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 300);
         _receiptsGrid = new PagedDataGridControl("Phiếu nhập kho (WarehouseReceipts)", "Tạo phiếu nhập vật tư và xác nhận nhập kho để tăng InventoryBalances.");
         if (_auth.HasPermission(ClientPermissions.Warehouse.ReceiptsManage))
         {
@@ -193,7 +202,7 @@ public sealed class InventoryWorkspaceControl : ModuleViewBase
 
     private void BuildTrackingTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 520 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Vertical, 520);
         _lotsGrid = new PagedDataGridControl("Lô hàng (InventoryLots)", "Quản lý mã lô sản xuất và hạn sử dụng.");
         if (_auth.HasPermission(ClientPermissions.Inventory.LotsManage))
         {

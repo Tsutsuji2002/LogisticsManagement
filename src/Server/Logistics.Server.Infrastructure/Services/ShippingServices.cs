@@ -75,6 +75,15 @@ public class ShipmentService : IShipmentService
     private bool IsSuperAdmin() =>
         _currentUserService.IsInRole(AppRoles.SuperAdmin) || _currentUserService.IsInRole("Admin");
 
+    private void EnsureShipmentBranchAccess(long originBranchId, long destinationBranchId)
+    {
+        if (IsSuperAdmin()) return;
+        if (!_currentUserService.HasBranchAccess(originBranchId) && !_currentUserService.HasBranchAccess(destinationBranchId))
+        {
+            throw new ForbiddenAccessException($"You do not have access to branches '{originBranchId}' or '{destinationBranchId}'.");
+        }
+    }
+
     private IQueryable<Shipment> ApplyBranchFilter(IQueryable<Shipment> query)
     {
         if (IsSuperAdmin()) return query;
@@ -202,7 +211,7 @@ public class ShipmentService : IShipmentService
 
     public async Task<IReadOnlyList<ShipmentDto>> GetByOrderIdAsync(long orderId, CancellationToken cancellationToken = default)
     {
-        var shipments = await _context.Shipments
+        var query = _context.Shipments
             .Include(s => s.Order)
             .Include(s => s.Customer)
             .Include(s => s.OriginBranch)
@@ -210,7 +219,11 @@ public class ShipmentService : IShipmentService
             .Include(s => s.AssignedCarrier)
             .Include(s => s.CarrierService)
             .Include(s => s.Currency)
-            .Where(s => s.OrderId == orderId)
+            .Where(s => s.OrderId == orderId);
+
+        query = ApplyBranchFilter(query);
+
+        var shipments = await query
             .OrderByDescending(s => s.CreatedAt)
             .Select(s => MapToDto(s))
             .ToListAsync(cancellationToken);
@@ -229,12 +242,18 @@ public class ShipmentService : IShipmentService
             .FirstOrDefaultAsync(o => o.Id == request.OrderId, cancellationToken)
             ?? throw new NotFoundException("Order", request.OrderId);
 
+        if (!IsSuperAdmin() && !_currentUserService.HasBranchAccess(order.BranchId))
+            throw new ForbiddenAccessException($"You do not have access to branch id '{order.BranchId}'.");
+
         if (string.Equals(order.OrderStatus, "Cancelled", StringComparison.OrdinalIgnoreCase))
             throw new ConflictException("Cannot create a shipment from a cancelled order.");
         if (string.Equals(order.OrderStatus, "Draft", StringComparison.OrdinalIgnoreCase))
             throw new ConflictException("Order must be confirmed before a shipment can be created. Current status: Draft.");
 
         var originBranchId = request.OriginBranchId > 0 ? request.OriginBranchId : order.BranchId;
+        if (!IsSuperAdmin() && !_currentUserService.HasBranchAccess(originBranchId))
+            throw new ForbiddenAccessException($"You do not have access to origin branch id '{originBranchId}'.");
+
         var destBranchId = request.DestinationBranchId;
 
         var destBranch = await _context.Branches.FindAsync(new object[] { destBranchId }, cancellationToken)
@@ -720,7 +739,13 @@ public class ShipmentPackageService : IShipmentPackageService
         else
             s = await _context.Shipments.Include(x => x.Packages).FirstOrDefaultAsync(x => x.TrackingNumber == identifier, ct);
 
-        return s ?? throw new NotFoundException("Shipment", identifier);
+        if (s == null) throw new NotFoundException("Shipment", identifier);
+        if (!_currentUserService.IsInRole(AppRoles.SuperAdmin) && !_currentUserService.IsInRole("Admin") &&
+            !_currentUserService.HasBranchAccess(s.OriginBranchId) && !_currentUserService.HasBranchAccess(s.DestinationBranchId))
+        {
+            throw new ForbiddenAccessException();
+        }
+        return s;
     }
 
     private static ShipmentPackageDto MapPackage(ShipmentPackage p) => new()
@@ -903,7 +928,13 @@ public class ShipmentAddressService : IShipmentAddressService
         else
             s = await _context.Shipments.Include(x => x.Addresses).ThenInclude(a => a.Country).Include(x => x.Addresses).ThenInclude(a => a.Province).Include(x => x.Addresses).ThenInclude(a => a.District).Include(x => x.Addresses).ThenInclude(a => a.Ward).FirstOrDefaultAsync(x => x.TrackingNumber == identifier, ct);
 
-        return s ?? throw new NotFoundException("Shipment", identifier);
+        if (s == null) throw new NotFoundException("Shipment", identifier);
+        if (!_currentUserService.IsInRole(AppRoles.SuperAdmin) && !_currentUserService.IsInRole("Admin") &&
+            !_currentUserService.HasBranchAccess(s.OriginBranchId) && !_currentUserService.HasBranchAccess(s.DestinationBranchId))
+        {
+            throw new ForbiddenAccessException();
+        }
+        return s;
     }
 
     private static ShipmentAddressDto MapAddress(ShipmentAddress a) => new()
@@ -1045,6 +1076,16 @@ public class PickupRequestService : IPickupRequestService
         UpdatedBy = p.UpdatedBy
     };
 
+    private bool IsSuperAdmin() =>
+        _currentUserService.IsInRole(AppRoles.SuperAdmin) || _currentUserService.IsInRole("Admin");
+
+    private void EnsureBranchAccess(long branchId)
+    {
+        if (IsSuperAdmin()) return;
+        if (!_currentUserService.HasBranchAccess(branchId))
+            throw new ForbiddenAccessException($"You do not have access to branch id '{branchId}'.");
+    }
+
     private async Task<PickupRequest> FindAsync(string identifier, CancellationToken ct)
     {
         var query = _context.PickupRequests
@@ -1057,7 +1098,9 @@ public class PickupRequestService : IPickupRequestService
         else if (Guid.TryParse(identifier, out var guid)) pr = await query.FirstOrDefaultAsync(p => p.PublicId == guid, ct);
         else pr = await query.FirstOrDefaultAsync(p => p.PickupCode == identifier, ct);
 
-        return pr ?? throw new NotFoundException("PickupRequest", identifier);
+        if (pr == null) throw new NotFoundException("PickupRequest", identifier);
+        EnsureBranchAccess(pr.Customer.BranchId);
+        return pr;
     }
 
     public async Task<PagedResult<PickupRequestDto>> GetPickupRequestsAsync(
@@ -1070,6 +1113,12 @@ public class PickupRequestService : IPickupRequestService
             .Include(p => p.RequestedAddress)
             .Include(p => p.AssignedEmployee)
             .AsQueryable();
+
+        if (!IsSuperAdmin())
+        {
+            var accessible = _currentUserService.AccessibleBranchIds;
+            query = query.Where(p => accessible.Contains(p.Customer.BranchId));
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.PickupCode.Contains(search) || p.ContactName.Contains(search) || p.ContactPhone.Contains(search));
@@ -1108,6 +1157,8 @@ public class PickupRequestService : IPickupRequestService
     {
         var customer = await _context.Customers.FindAsync(new object[] { request.CustomerId }, cancellationToken)
             ?? throw new NotFoundException("Customer", request.CustomerId);
+
+        EnsureBranchAccess(customer.BranchId);
 
         var address = await _context.Addresses.FindAsync(new object[] { request.RequestedAddressId }, cancellationToken)
             ?? throw new NotFoundException("Address", request.RequestedAddressId);
@@ -1271,7 +1322,13 @@ public class ShipmentAssignmentService : IShipmentAssignmentService
         else
             s = await _context.Shipments.Include(x => x.Assignments).ThenInclude(a => a.AssignedToEmployee).Include(x => x.Assignments).ThenInclude(a => a.AssignedBranch).FirstOrDefaultAsync(x => x.TrackingNumber == identifier, ct);
 
-        return s ?? throw new NotFoundException("Shipment", identifier);
+        if (s == null) throw new NotFoundException("Shipment", identifier);
+        if (!_currentUserService.IsInRole(AppRoles.SuperAdmin) && !_currentUserService.IsInRole("Admin") &&
+            !_currentUserService.HasBranchAccess(s.OriginBranchId) && !_currentUserService.HasBranchAccess(s.DestinationBranchId))
+        {
+            throw new ForbiddenAccessException();
+        }
+        return s;
     }
 
     private static ShipmentAssignmentDto MapDto(ShipmentAssignment a) => new()
@@ -1403,7 +1460,13 @@ public class DeliveryAttemptService : IDeliveryAttemptService
         else
             s = await _context.Shipments.Include(x => x.DeliveryAttempts).ThenInclude(a => a.AttemptedByEmployee).Include(x => x.DeliveryAttempts).ThenInclude(a => a.ProofOfDelivery).FirstOrDefaultAsync(x => x.TrackingNumber == identifier, ct);
 
-        return s ?? throw new NotFoundException("Shipment", identifier);
+        if (s == null) throw new NotFoundException("Shipment", identifier);
+        if (!_currentUserService.IsInRole(AppRoles.SuperAdmin) && !_currentUserService.IsInRole("Admin") &&
+            !_currentUserService.HasBranchAccess(s.OriginBranchId) && !_currentUserService.HasBranchAccess(s.DestinationBranchId))
+        {
+            throw new ForbiddenAccessException();
+        }
+        return s;
     }
 
     private static DeliveryAttemptDto MapDto(DeliveryAttempt a) => new()
@@ -1572,7 +1635,13 @@ public class ProofOfDeliveryService : IProofOfDeliveryService
         else
             s = await _context.Shipments.FirstOrDefaultAsync(x => x.TrackingNumber == identifier, ct);
 
-        return s ?? throw new NotFoundException("Shipment", identifier);
+        if (s == null) throw new NotFoundException("Shipment", identifier);
+        if (!_currentUserService.IsInRole(AppRoles.SuperAdmin) && !_currentUserService.IsInRole("Admin") &&
+            !_currentUserService.HasBranchAccess(s.OriginBranchId) && !_currentUserService.HasBranchAccess(s.DestinationBranchId))
+        {
+            throw new ForbiddenAccessException();
+        }
+        return s;
     }
 
     private static ProofOfDeliveryDto MapDto(ProofOfDelivery pod) => new()
@@ -1615,9 +1684,18 @@ public class ProofOfDeliveryService : IProofOfDeliveryService
             a.Id == attemptId && a.ShipmentId == shipment.Id, cancellationToken)
             ?? throw new NotFoundException("DeliveryAttempt", attemptId);
 
+        if (!string.Equals(attempt.Status, "Delivered", StringComparison.OrdinalIgnoreCase))
+            throw new ConflictException($"Proof of delivery requires a delivery attempt with status 'Delivered'. Attempt status is '{attempt.Status}'.");
+
         var existing = await _context.ProofOfDeliveries.AnyAsync(p => p.ShipmentId == shipment.Id, cancellationToken);
         if (existing)
             throw new ConflictException("A proof of delivery already exists for this shipment.");
+
+        if (!string.Equals(shipment.ShipmentStatus, "Delivered", StringComparison.OrdinalIgnoreCase) &&
+            !ShipmentStateHelper.IsValidTransition(shipment.ShipmentStatus, "Delivered"))
+        {
+            throw new ConflictException($"Cannot mark shipment Delivered via POD from status '{shipment.ShipmentStatus}'.");
+        }
 
         if (request.SignatureAttachmentId.HasValue)
         {
@@ -1721,6 +1799,19 @@ public class ReturnRequestService : IReturnRequestService
         UpdatedBy = r.UpdatedBy
     };
 
+    private bool IsSuperAdmin() =>
+        _currentUserService.IsInRole(AppRoles.SuperAdmin) || _currentUserService.IsInRole("Admin");
+
+    private void EnsureShipmentBranchAccess(Shipment shipment)
+    {
+        if (IsSuperAdmin()) return;
+        if (!_currentUserService.HasBranchAccess(shipment.OriginBranchId) &&
+            !_currentUserService.HasBranchAccess(shipment.DestinationBranchId))
+        {
+            throw new ForbiddenAccessException();
+        }
+    }
+
     private async Task<ReturnRequest> FindAsync(string identifier, CancellationToken ct)
     {
         var query = _context.ReturnRequests
@@ -1732,7 +1823,9 @@ public class ReturnRequestService : IReturnRequestService
         else if (Guid.TryParse(identifier, out var guid)) rr = await query.FirstOrDefaultAsync(r => r.PublicId == guid, ct);
         else rr = await query.FirstOrDefaultAsync(r => r.ReturnCode == identifier, ct);
 
-        return rr ?? throw new NotFoundException("ReturnRequest", identifier);
+        if (rr == null) throw new NotFoundException("ReturnRequest", identifier);
+        EnsureShipmentBranchAccess(rr.OriginalShipment);
+        return rr;
     }
 
     public async Task<PagedResult<ReturnRequestDto>> GetReturnRequestsAsync(
@@ -1744,6 +1837,13 @@ public class ReturnRequestService : IReturnRequestService
             .Include(r => r.OriginalShipment)
             .Include(r => r.NewReturnShipment)
             .AsQueryable();
+
+        if (!IsSuperAdmin())
+        {
+            var accessible = _currentUserService.AccessibleBranchIds;
+            query = query.Where(r => accessible.Contains(r.OriginalShipment.OriginBranchId) ||
+                                     accessible.Contains(r.OriginalShipment.DestinationBranchId));
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(r => r.ReturnCode.Contains(search) || r.ReasonCode.Contains(search) || r.OriginalShipment.TrackingNumber.Contains(search));
@@ -1781,6 +1881,8 @@ public class ReturnRequestService : IReturnRequestService
         var shipment = await _context.Shipments
             .FirstOrDefaultAsync(s => s.Id == request.OriginalShipmentId, cancellationToken)
             ?? throw new NotFoundException("Shipment", request.OriginalShipmentId);
+
+        EnsureShipmentBranchAccess(shipment);
 
         if (!new[] { "Delivered", "DeliveryFailed", "Cancelled" }.Contains(shipment.ShipmentStatus, StringComparer.OrdinalIgnoreCase))
             throw new ConflictException($"Return requests can only be created for Delivered, DeliveryFailed, or Cancelled shipments. Current status: '{shipment.ShipmentStatus}'.");
@@ -1840,9 +1942,9 @@ public class ReturnRequestService : IReturnRequestService
             rr.UpdatedAt = DateTime.UtcNow;
             rr.UpdatedBy = actor;
 
-            // Trigger returning state on original shipment
+            // Trigger returning state on original shipment only when valid state-machine transition applies
             var shipment = rr.OriginalShipment;
-            if (shipment != null && shipment.ShipmentStatus != "Returning" && shipment.ShipmentStatus != "Returned")
+            if (shipment != null && ShipmentStateHelper.IsValidTransition(shipment.ShipmentStatus, "Returning"))
             {
                 shipment.ShipmentStatus = "Returning";
                 shipment.UpdatedAt = DateTime.UtcNow;
@@ -1906,7 +2008,13 @@ public class ShipmentRouteService : IShipmentRouteService
         else
             s = await _context.Shipments.Include(x => x.Routes).ThenInclude(r => r.FromWarehouse).Include(x => x.Routes).ThenInclude(r => r.ToWarehouse).Include(x => x.Routes).ThenInclude(r => r.Carrier).FirstOrDefaultAsync(x => x.TrackingNumber == identifier, ct);
 
-        return s ?? throw new NotFoundException("Shipment", identifier);
+        if (s == null) throw new NotFoundException("Shipment", identifier);
+        if (!_currentUserService.IsInRole(AppRoles.SuperAdmin) && !_currentUserService.IsInRole("Admin") &&
+            !_currentUserService.HasBranchAccess(s.OriginBranchId) && !_currentUserService.HasBranchAccess(s.DestinationBranchId))
+        {
+            throw new ForbiddenAccessException();
+        }
+        return s;
     }
 
     private static ShipmentRouteDto MapDto(ShipmentRoute r) => new()

@@ -7,11 +7,13 @@ using Logistics.Server.Application;
 using Logistics.Server.Application.Modules.Identity.Services;
 using Logistics.Server.Infrastructure;
 using Logistics.Server.Infrastructure.Persistence;
+using Logistics.Server.Infrastructure.Services;
 using Logistics.Server.Integrations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -85,7 +87,22 @@ builder.Services.AddSwaggerGen(options =>
 
 // JWT Authentication Configuration
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var jwtSecret = jwtSection["Secret"] ?? "CHANGE_THIS_TO_A_SECURE_SECRET_KEY_AT_LEAST_32_CHARS";
+var jwtSecret = jwtSection["Secret"];
+if (!builder.Environment.IsDevelopment())
+{
+    if (string.IsNullOrWhiteSpace(jwtSecret) ||
+        jwtSecret.StartsWith("CHANGE_THIS", StringComparison.OrdinalIgnoreCase) ||
+        Encoding.UTF8.GetByteCount(jwtSecret) < 32)
+    {
+        throw new InvalidOperationException(
+            "A strong non-placeholder Jwt:Secret (at least 32 bytes) must be configured in non-Development environments.");
+    }
+}
+else if (string.IsNullOrWhiteSpace(jwtSecret))
+{
+    jwtSecret = "DEV_ONLY_FALLBACK_KEY_MUST_BE_CHANGED_IN_PROD_32CHARS!";
+}
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -105,6 +122,41 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSection["Audience"] ?? "LogisticsManagement.Client",
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
         ClockSkew = TimeSpan.FromMinutes(1)
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var subClaim = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? context.Principal?.FindFirst("sub")?.Value;
+            if (!long.TryParse(subClaim, out var userId))
+            {
+                context.Fail("Missing or invalid subject claim.");
+                return;
+            }
+
+            var db = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+            var userState = await db.UserAccounts
+                .AsNoTracking()
+                .Where(u => u.Id == userId)
+                .Select(u => new { u.IsActive, u.IsLockedOut, u.LockoutEndAt, u.SecurityStamp })
+                .FirstOrDefaultAsync(context.HttpContext.RequestAborted);
+
+            if (userState == null ||
+                !userState.IsActive ||
+                (userState.IsLockedOut && (!userState.LockoutEndAt.HasValue || userState.LockoutEndAt > DateTime.UtcNow)))
+            {
+                context.Fail("User account is inactive or locked.");
+                return;
+            }
+
+            var tokenStamp = context.Principal?.FindFirst("security_stamp")?.Value;
+            if (!string.IsNullOrWhiteSpace(userState.SecurityStamp) &&
+                !string.Equals(tokenStamp, userState.SecurityStamp, StringComparison.Ordinal))
+            {
+                context.Fail("Token security stamp is no longer valid.");
+            }
+        }
     };
 });
 
@@ -237,6 +289,28 @@ using (var scope = app.Services.CreateScope())
     {
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         logger.LogWarning(ex, "Initial identity data seeding was skipped or encountered an error.");
+    }
+}
+
+// Development-only (relational DB only, skipped for InMemory integration tests):
+// seed reference data + sample records so the app is immediately usable
+if (app.Environment.IsDevelopment() &&
+    app.Configuration.GetValue<bool>("DevSeed:Enabled"))
+{
+    using var scope = app.Services.CreateScope();
+    try
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        if (dbContext.Database.IsRelational())
+        {
+            var devSeeder = scope.ServiceProvider.GetRequiredService<DevDataSeeder>();
+            await devSeeder.SeedAsync();
+        }
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogWarning(ex, "DevDataSeeder was skipped or encountered an error.");
     }
 }
 

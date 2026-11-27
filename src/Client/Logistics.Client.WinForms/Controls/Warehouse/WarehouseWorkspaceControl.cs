@@ -57,24 +57,31 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
         BuildParcelHubTab();
         BuildDispatchesTab();
 
-        _tabs.TabPages.AddRange([_tabFacilities, _tabParcelHub, _tabDispatches]);
+        if (_auth.HasAnyPermission(ClientPermissions.Warehouse.WarehousesRead, ClientPermissions.Warehouse.WarehousesManage))
+            _tabs.TabPages.Add(_tabFacilities);
+        if (_auth.HasAnyPermission(ClientPermissions.Warehouse.OperationsRead, ClientPermissions.Warehouse.SortingManage))
+            _tabs.TabPages.Add(_tabParcelHub);
+        if (_auth.HasAnyPermission(ClientPermissions.Warehouse.OperationsRead, ClientPermissions.Warehouse.DispatchesManage))
+            _tabs.TabPages.Add(_tabDispatches);
+
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
     }
 
     public void SelectSection(string navKey)
     {
-        _tabs.SelectedTab = navKey switch
+        var tab = navKey switch
         {
             "Warehouse.ParcelHub" => _tabParcelHub,
             "Warehouse.Dispatches" => _tabDispatches,
             _ => _tabFacilities
         };
+        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
     }
 
     private void BuildFacilitiesTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 280, Panel1MinSize = 180, Panel2MinSize = 180 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 280, 180, 180);
         _warehousesGrid = new PagedDataGridControl("Kho bãi & Hub trung chuyển", "Quản lý kho, khu vực phân loại (Zone) và vị trí chứa (Location).");
 
         if (_auth.HasPermission(ClientPermissions.Warehouse.WarehousesManage))
@@ -103,7 +110,7 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
             await LoadZonesAndLocationsAsync();
         };
 
-        var detailSplit = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 420 };
+        var detailSplit = AppTheme.CreateSafeSplitContainer(Orientation.Vertical, 420);
         detailSplit.Panel1.Controls.Add(BuildSubPanel("Khu vực (Zones)", _zonesGrid,
             _auth.HasPermission(ClientPermissions.Warehouse.ZonesManage) ? ("Thêm Zone", CreateZoneAsync) : null));
         detailSplit.Panel2.Controls.Add(BuildSubPanel("Vị trí (Locations)", _locationsGrid,
@@ -125,7 +132,7 @@ public sealed class WarehouseWorkspaceControl : ModuleViewBase
 
     private void BuildParcelHubTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 190, Panel1MinSize = 150 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 190, 150);
         var hubCard = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.CardBg, Padding = new Padding(16) };
 
         var header = new Label

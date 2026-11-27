@@ -80,8 +80,8 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
 
     private void BuildRatesAndChargesTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 280, Panel1MinSize = 180 };
-        var topSplit = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 540 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 280, 180);
+        var topSplit = AppTheme.CreateSafeSplitContainer(Orientation.Vertical, 540);
 
         _rateCardsGrid = new PagedDataGridControl("Bảng giá cước (ShippingRateCards)", "Quản lý bảng giá mặc định và bậc cước theo trọng lượng.");
         if (_auth.HasPermission(ClientPermissions.Finance.RatesManage))
@@ -146,8 +146,8 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
 
     private void BuildInvoicesAndPaymentsTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 320, Panel1MinSize = 200 };
-        var invSplit = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 680 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 320, 200);
+        var invSplit = AppTheme.CreateSafeSplitContainer(Orientation.Vertical, 680);
 
         _invoicesGrid = new PagedDataGridControl("Hóa đơn khách hàng (Invoices - Server tính tổng & VAT)", "Mọi dòng tiền Subtotal / VAT / Paid / Outstanding đều do server tính.");
         _invStatusFilter.Items.AddRange(["", "Draft", "Issued", "PartiallyPaid", "Paid", "Overdue", "Cancelled"]);
@@ -214,7 +214,7 @@ public sealed class FinanceWorkspaceControl : ModuleViewBase
 
     private void BuildBalancesAndLedgerTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 280 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 280);
         _balancesGrid = new PagedDataGridControl("Công nợ khách hàng (CustomerBalances - Authoritative)", "Số dư công nợ, phí chưa xuất hóa đơn và quỹ giữ hộ COD.");
         if (_auth.HasPermission(ClientPermissions.Finance.BalancesReconcile))
         {

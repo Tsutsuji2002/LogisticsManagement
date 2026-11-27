@@ -393,7 +393,7 @@ public partial class MainForm : Form
         _suppressBranchEvent = true;
         _branchCombo.Items.Clear();
 
-        if (_branchContext.IsCompanyWideScope)
+        if (_authorization.IsInRole(ClientPermissions.Roles.SuperAdmin) || _branchContext.AccessibleBranches.Count > 1)
         {
             _branchCombo.Items.Add(new ModalComboOption(null, AppStrings.T("AllBranchesScope")));
         }
@@ -452,53 +452,56 @@ public partial class MainForm : Form
     {
         if (IsDisposed) return;
 
-        // Verify permission for target item before opening
-        var match = NavigationCatalog.Groups
-            .SelectMany(g => g.Items.Select(i => (Group: g, Item: i)))
-            .FirstOrDefault(x => string.Equals(x.Item.Key, navKey, StringComparison.OrdinalIgnoreCase));
-
-        if (match.Item != null &&
-            match.Item.RequiredAnyPermissions.Length > 0 &&
-            !_authorization.HasAnyPermission(match.Item.RequiredAnyPermissions))
+        await UiAsyncRunner.RunSafeAsync(this, async () =>
         {
-            MessageBox.Show(this, "Bạn không có quyền truy cập chức năng này.", "Không đủ quyền", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
+            // Verify permission for target item before opening
+            var match = NavigationCatalog.Groups
+                .SelectMany(g => g.Items.Select(i => (Group: g, Item: i)))
+                .FirstOrDefault(x => string.Equals(x.Item.Key, navKey, StringComparison.OrdinalIgnoreCase));
 
-        _activeNavKey = navKey;
-        if (match.Group != null && _expandedGroups.Add(match.Group.GroupKey))
-            RebuildNavigationSidebar();
-        else
-            HighlightActiveNavButton();
+            if (match.Item != null &&
+                match.Item.RequiredAnyPermissions.Length > 0 &&
+                !_authorization.HasAnyPermission(match.Item.RequiredAnyPermissions))
+            {
+                MessageBox.Show(this, "Bạn không có quyền truy cập chức năng này.", "Không đủ quyền", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
-        if (match.Item != null && match.Group != null)
-        {
-            var groupTitle = AppStrings.T(match.Group.TitleKey);
-            var itemTitle = AppStrings.T(match.Item.TitleKey);
-            if (itemTitle == match.Item.TitleKey) itemTitle = match.Item.DefaultTitle;
-            _breadcrumbLabel.Text = $"{groupTitle}  ›  {itemTitle}";
-            _pageTitleLabel.Text = itemTitle;
-        }
+            _activeNavKey = navKey;
+            if (match.Group != null && _expandedGroups.Add(match.Group.GroupKey))
+                RebuildNavigationSidebar();
+            else
+                HighlightActiveNavButton();
 
-        var controlKey = ResolveModuleControlKey(navKey);
-        if (!_moduleControls.TryGetValue(controlKey, out var control))
-        {
-            control = CreateModuleControl(controlKey);
-            control.Dock = DockStyle.Fill;
-            _moduleControls[controlKey] = control;
-        }
+            if (match.Item != null && match.Group != null)
+            {
+                var groupTitle = AppStrings.T(match.Group.TitleKey);
+                var itemTitle = AppStrings.T(match.Item.TitleKey);
+                if (itemTitle == match.Item.TitleKey) itemTitle = match.Item.DefaultTitle;
+                _breadcrumbLabel.Text = $"{groupTitle}  ›  {itemTitle}";
+                _pageTitleLabel.Text = itemTitle;
+            }
 
-        SelectModuleSubSection(control, navKey);
+            var controlKey = ResolveModuleControlKey(navKey);
+            if (!_moduleControls.TryGetValue(controlKey, out var control))
+            {
+                control = CreateModuleControl(controlKey);
+                control.Dock = DockStyle.Fill;
+                _moduleControls[controlKey] = control;
+            }
 
-        _contentHostPanel.SuspendLayout();
-        _contentHostPanel.Controls.Clear();
-        _contentHostPanel.Controls.Add(control);
-        _contentHostPanel.ResumeLayout();
+            SelectModuleSubSection(control, navKey);
 
-        if (control is IModuleView moduleView)
-        {
-            await UiAsyncRunner.RunSafeAsync(this, () => moduleView.LoadInitialAsync(), null, null, _logger);
-        }
+            _contentHostPanel.SuspendLayout();
+            _contentHostPanel.Controls.Clear();
+            _contentHostPanel.Controls.Add(control);
+            _contentHostPanel.ResumeLayout();
+
+            if (control is IModuleView moduleView)
+            {
+                await moduleView.LoadInitialAsync();
+            }
+        }, null, null, _logger);
     }
 
     private static string ResolveModuleControlKey(string navKey)

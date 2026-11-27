@@ -24,11 +24,19 @@ public class NumberSequenceService : INumberSequenceService
         await semaphore.WaitAsync(cancellationToken);
         try
         {
+            var isSqlServer = string.Equals(_context.Database.ProviderName, "Microsoft.EntityFrameworkCore.SqlServer", StringComparison.OrdinalIgnoreCase);
+            var ownsTx = _context.Database.IsRelational() && _context.Database.CurrentTransaction == null;
+            await using var tx = ownsTx ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+
             var now = DateTime.UtcNow;
             var today = DateOnly.FromDateTime(now);
 
-            var sequence = await _context.NumberSequences
-                .FirstOrDefaultAsync(s => s.Scope.ToUpper() == normalizedScope, cancellationToken);
+            NumberSequence? sequence = isSqlServer
+                ? await _context.NumberSequences
+                    .FromSqlInterpolated($"SELECT * FROM [configuration].[NumberSequences] WITH (UPDLOCK, ROWLOCK) WHERE UPPER([Scope]) = {normalizedScope}")
+                    .FirstOrDefaultAsync(cancellationToken)
+                : await _context.NumberSequences
+                    .FirstOrDefaultAsync(s => s.Scope.ToUpper() == normalizedScope, cancellationToken);
 
             if (sequence == null)
             {
@@ -47,6 +55,9 @@ public class NumberSequenceService : INumberSequenceService
 
                 await _context.NumberSequences.AddAsync(sequence, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
+
+                if (tx != null)
+                    await tx.CommitAsync(cancellationToken);
 
                 return FormatNumber(sequence, 1, now);
             }
@@ -81,6 +92,9 @@ public class NumberSequenceService : INumberSequenceService
             sequence.LastResetDate ??= today;
 
             await _context.SaveChangesAsync(cancellationToken);
+
+            if (tx != null)
+                await tx.CommitAsync(cancellationToken);
 
             return FormatNumber(sequence, currentNumber, now);
         }

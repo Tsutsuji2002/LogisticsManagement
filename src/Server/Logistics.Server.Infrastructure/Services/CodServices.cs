@@ -211,6 +211,9 @@ public class CodCollectionService : ICodCollectionService
         if (collection.Status == "RemittedToCustomer")
             throw new ConflictException("Cannot modify a COD collection that has already been remitted to customer.");
 
+        if (request.CollectedAmount < 0 || request.CollectedAmount > collection.Shipment.CodAmount)
+            throw new ConflictException($"Collected amount ({request.CollectedAmount:N0}) must be between 0 and expected COD amount ({collection.Shipment.CodAmount:N0}).");
+
         var oldAmount = collection.CollectedAmount;
         collection.CollectedAmount = request.CollectedAmount;
 
@@ -227,9 +230,9 @@ public class CodCollectionService : ICodCollectionService
         if (request.Notes != null)
             collection.Notes = request.Notes;
 
-        // Adjust customer balance difference
+        // Adjust customer COD holding ONLY if already verified by cashier (holding balance tracks verified funds)
         var diff = request.CollectedAmount - oldAmount;
-        if (diff != 0)
+        if (diff != 0 && collection.Status == "VerifiedByCashier")
         {
             var balance = await _context.CustomerBalances
                 .FirstOrDefaultAsync(b => b.CustomerId == collection.Shipment.CustomerId, cancellationToken);
@@ -700,6 +703,9 @@ public class CodRemittanceService : ICodRemittanceService
             if (col.RemittanceItem != null || col.Status == "RemittedToCustomer")
                 throw new ConflictException($"COD Collection #{col.Id} has already been included in a remittance.");
 
+            if (col.Status != "VerifiedByCashier")
+                throw new ConflictException($"COD Collection #{col.Id} must be VerifiedByCashier before remittance. Current status: '{col.Status}'.");
+
             if (col.CurrencyId != currency.Id)
                 throw new ConflictException($"COD Collection #{col.Id} currency does not match remittance currency.");
         }
@@ -781,6 +787,9 @@ public class CodRemittanceService : ICodRemittanceService
         if (collection.RemittanceItem != null || collection.Status == "RemittedToCustomer")
             throw new ConflictException("Collection is already part of a remittance.");
 
+        if (collection.Status != "VerifiedByCashier")
+            throw new ConflictException($"Collection must be VerifiedByCashier before adding to remittance. Current status: '{collection.Status}'.");
+
         var netItem = collection.CollectedAmount - request.DeductedShippingFee;
         var item = new CODRemittanceItem
         {
@@ -823,7 +832,7 @@ public class CodRemittanceService : ICodRemittanceService
         remittance.TotalServiceFeesDeducted = Math.Max(0m, remittance.TotalServiceFeesDeducted - item.DeductedShippingFee);
         remittance.NetRemittanceAmount = Math.Max(0m, remittance.NetRemittanceAmount - item.NetAmount);
 
-        if (item.CODCollection != null)
+        if (item.CODCollection != null && item.CODCollection.Status == "RemittedToCustomer")
         {
             item.CODCollection.Status = "VerifiedByCashier";
         }
@@ -919,10 +928,10 @@ public class CodRemittanceService : ICodRemittanceService
         remittance.Status = "Cancelled";
         remittance.Notes = string.IsNullOrWhiteSpace(remittance.Notes) ? $"Cancelled: {reason}" : $"{remittance.Notes}; Cancelled: {reason}";
 
-        // Restore collections and remove remittance items
+        // Restore collections only if they were marked RemittedToCustomer
         foreach (var item in remittance.RemittanceItems)
         {
-            if (item.CODCollection != null)
+            if (item.CODCollection != null && item.CODCollection.Status == "RemittedToCustomer")
             {
                 item.CODCollection.Status = "VerifiedByCashier";
             }
@@ -1029,7 +1038,26 @@ public class CodReconciliationService : ICodReconciliationService
             .AsNoTracking();
 
         if (branchId.HasValue)
+        {
             remQuery = remQuery.Where(r => r.Customer.BranchId == branchId.Value);
+        }
+        else if (!_currentUser.IsInRole("SUPER_ADMIN") && !_currentUser.IsInRole("Admin"))
+        {
+            var accessible = _currentUser.AccessibleBranchIds;
+            remQuery = remQuery.Where(r => accessible.Contains(r.Customer.BranchId));
+        }
+
+        if (fromDate.HasValue)
+        {
+            var dtFrom = fromDate.Value.ToDateTime(TimeOnly.MinValue);
+            remQuery = remQuery.Where(r => r.RemittanceDate >= dtFrom);
+        }
+
+        if (toDate.HasValue)
+        {
+            var dtTo = toDate.Value.ToDateTime(TimeOnly.MaxValue);
+            remQuery = remQuery.Where(r => r.RemittanceDate <= dtTo);
+        }
 
         var remittances = await remQuery.ToListAsync(cancellationToken);
 

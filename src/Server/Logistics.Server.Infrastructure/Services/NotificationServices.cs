@@ -838,7 +838,12 @@ public sealed class NotificationService : INotificationService
             || (_currentUser.UserId.HasValue && _permissionService != null
                 && await _permissionService.HasPermissionAsync(_currentUser.UserId.Value, AppPermissions.Notification.NotificationsManage, ct));
 
-        if (isAdmin) return;
+        if (isAdmin)
+        {
+            if (notification.BranchId.HasValue && !_currentUser.IsInRole(AppRoles.SuperAdmin) && !_currentUser.HasBranchAccess(notification.BranchId.Value))
+                throw new ForbiddenAccessException();
+            return;
+        }
 
         throw new ForbiddenAccessException("You cannot modify another user's notifications.");
     }

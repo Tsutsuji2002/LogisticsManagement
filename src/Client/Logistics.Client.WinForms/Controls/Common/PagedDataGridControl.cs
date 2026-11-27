@@ -269,6 +269,7 @@ public class PagedDataGridControl : UserControl
 
         _grid.DataSource = null;
         _grid.DataSource = paged.Items.ToList();
+        AppTheme.ConfigureGridColumns(_grid);
 
         _btnFirst.Enabled = paged.HasPreviousPage;
         _btnPrev.Enabled = paged.HasPreviousPage;
@@ -293,6 +294,7 @@ public class PagedDataGridControl : UserControl
     {
         _grid.DataSource = null;
         _grid.DataSource = items.ToList();
+        AppTheme.ConfigureGridColumns(_grid);
         _pageInfoLabel.Text = $"{items.Count:N0} bản ghi";
         if (items.Count == 0)
         {

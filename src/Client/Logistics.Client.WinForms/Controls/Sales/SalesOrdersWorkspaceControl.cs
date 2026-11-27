@@ -42,7 +42,7 @@ public sealed class SalesOrdersWorkspaceControl : ModuleViewBase
         _branchContext = branchContext;
         _logger = logger;
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 330, Panel1MinSize = 200, Panel2MinSize = 200 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 330, 200, 200);
 
         _ordersGrid = new PagedDataGridControl("Đơn hàng (Sales Orders)", "Tạo đơn, xác nhận và hủy đơn hàng theo vòng đời backend.");
         _statusFilter.Items.AddRange(["", "Draft", "Confirmed", "Processing", "PartiallyShipped", "Shipped", "Delivered", "Cancelled"]);

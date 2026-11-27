@@ -74,7 +74,7 @@ public sealed class ShippingWorkspaceControl : ModuleViewBase
 
     private void BuildShipmentsTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 320 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 320);
         _shipmentsGrid = new PagedDataGridControl("Vận đơn (Shipments)", "Tạo từ đơn hàng đã xác nhận, điều phối tài xế, chuyển trạng thái theo state-machine backend.");
 
         if (_auth.HasPermission(ClientPermissions.Shipping.ShipmentsCreate))

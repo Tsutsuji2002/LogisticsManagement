@@ -37,20 +37,23 @@ public sealed class CarrierWorkspaceControl : ModuleViewBase
         BuildOperationsTab();
         BuildLogsTab();
 
-        _tabs.TabPages.AddRange([_tabCarriers, _tabOps, _tabLogs]);
+        if (_auth.HasAnyPermission(ClientPermissions.Carrier.CarriersRead, ClientPermissions.Carrier.CarriersManage))
+        {
+            _tabs.TabPages.AddRange([_tabCarriers, _tabOps, _tabLogs]);
+        }
         _tabs.SelectedIndexChanged += async (_, _) => await RefreshDataAsync();
         Controls.Add(_tabs);
     }
 
     public void SelectSection(string navKey)
     {
-        if (navKey == "Carrier.Operations") _tabs.SelectedTab = _tabOps;
-        else _tabs.SelectedTab = _tabCarriers;
+        var tab = navKey == "Carrier.Operations" ? _tabOps : _tabCarriers;
+        if (_tabs.TabPages.Contains(tab)) _tabs.SelectedTab = tab;
     }
 
     private void BuildCarriersTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 280 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 280);
         _carriersGrid = new PagedDataGridControl("Hãng vận chuyển (3PL)", "Quản lý đối tác GHN/GHTK/VNPost. API Keys/Secrets được che ẩn hoàn toàn sau khi lưu.");
         if (_auth.HasPermission(ClientPermissions.Carrier.CarriersManage))
         {

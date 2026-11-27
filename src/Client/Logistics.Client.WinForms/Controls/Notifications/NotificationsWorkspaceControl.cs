@@ -59,7 +59,7 @@ public sealed class NotificationsWorkspaceControl : ModuleViewBase
 
     private void BuildCenterTab()
     {
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 360 };
+        var split = AppTheme.CreateSafeSplitContainer(Orientation.Horizontal, 360);
         _notifGrid = new PagedDataGridControl("Thông báo (Notifications)", "Danh sách thông báo trong hệ thống (tự làm mới chu kỳ 60 giây trên thanh tiêu đề).", showSearch: false);
 
         _unreadOnlyCheck = new CheckBox { Text = "Chỉ chưa đọc", AutoSize = true, Margin = new Padding(4, 8, 8, 0) };
