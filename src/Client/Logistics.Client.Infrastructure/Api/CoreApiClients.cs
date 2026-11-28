@@ -2,6 +2,7 @@ using Logistics.Client.Application.Contracts.Auth;
 using Logistics.Client.Application.Contracts.Organization;
 using Logistics.Client.Application.Interfaces;
 using Logistics.Shared.Contracts;
+using Logistics.Shared.Contracts.DevData;
 using Logistics.Shared.Contracts.Health;
 using Logistics.Shared.Contracts.Pagination;
 
@@ -11,6 +12,18 @@ public sealed class HealthApiClient(IApiClient api) : IHealthApiClient
 {
     public async Task<HealthCheckResponse?> GetHealthAsync(CancellationToken ct = default)
         => (await api.GetAsync<ApiResponse<HealthCheckResponse>>("api/health", ct))?.Data;
+}
+
+public sealed class DevTestDataApiClient(IApiClient api) : IDevTestDataApiClient
+{
+    public async Task<DevTestDataStatusDto> GetStatusAsync(CancellationToken ct = default)
+        => ApiClientHelpers.UnwrapRequired(await api.GetAsync<ApiResponse<DevTestDataStatusDto>>("api/v1/dev/test-data/status", ct), "GET dev/test-data/status");
+
+    public async Task<ExecuteDevSeedResultDto> ExecuteAsync(ExecuteDevSeedRequest request, CancellationToken ct = default)
+        => ApiClientHelpers.UnwrapRequired(await api.PostAsync<ExecuteDevSeedRequest, ApiResponse<ExecuteDevSeedResultDto>>("api/v1/dev/test-data/execute", request, ct), "POST dev/test-data/execute");
+
+    public async Task<DevTestDataIntegrityReportDto> VerifyIntegrityAsync(CancellationToken ct = default)
+        => ApiClientHelpers.UnwrapRequired(await api.PostAsync<object, ApiResponse<DevTestDataIntegrityReportDto>>("api/v1/dev/test-data/verify", new { }, ct), "POST dev/test-data/verify");
 }
 
 public sealed class AuthSessionApiClient(IApiClient api) : IAuthSessionApiClient

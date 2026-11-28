@@ -30,4 +30,9 @@ public class InMemoryCacheService : ICacheService
         _cache.Remove(key);
         return Task.CompletedTask;
     }
+
+    public void Clear()
+    {
+        (_cache as MemoryCache)?.Compact(1.0);
+    }
 }

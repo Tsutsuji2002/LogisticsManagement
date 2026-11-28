@@ -50,6 +50,7 @@ public static class DependencyInjection
 
         // Typed Domain API Clients
         services.AddTransient<IHealthApiClient, HealthApiClient>();
+        services.AddTransient<IDevTestDataApiClient, DevTestDataApiClient>();
         services.AddTransient<IAuthSessionApiClient, AuthSessionApiClient>();
         services.AddTransient<IOrganizationApiClient, OrganizationApiClient>();
         services.AddTransient<IIdentityAdminApiClient, IdentityAdminApiClient>();

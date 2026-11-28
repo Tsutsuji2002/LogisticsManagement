@@ -10,6 +10,7 @@ using Logistics.Client.Application.Contracts.Reporting;
 using Logistics.Client.Application.Contracts.Sales;
 using Logistics.Client.Application.Contracts.Shipping;
 using Logistics.Client.Application.Contracts.Warehouse;
+using Logistics.Shared.Contracts.DevData;
 using Logistics.Shared.Contracts.Health;
 using Logistics.Shared.Contracts.Pagination;
 
@@ -18,6 +19,13 @@ namespace Logistics.Client.Application.Interfaces;
 public interface IHealthApiClient
 {
     Task<HealthCheckResponse?> GetHealthAsync(CancellationToken ct = default);
+}
+
+public interface IDevTestDataApiClient
+{
+    Task<DevTestDataStatusDto> GetStatusAsync(CancellationToken ct = default);
+    Task<ExecuteDevSeedResultDto> ExecuteAsync(ExecuteDevSeedRequest request, CancellationToken ct = default);
+    Task<DevTestDataIntegrityReportDto> VerifyIntegrityAsync(CancellationToken ct = default);
 }
 
 public interface IAuthSessionApiClient

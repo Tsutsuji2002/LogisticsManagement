@@ -8,7 +8,13 @@ public static class ClientPermissions
 {
     public static class Roles
     {
-        public const string SuperAdmin = "SuperAdmin";
+        public const string SuperAdmin = "SUPER_ADMIN";
+    }
+
+    public static class Configuration
+    {
+        public const string SettingsRead = "configuration.settings.read";
+        public const string SettingsManage = "configuration.settings.manage";
     }
 
     public static class Identity

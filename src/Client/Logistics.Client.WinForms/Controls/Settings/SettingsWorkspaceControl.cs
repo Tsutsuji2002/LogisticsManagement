@@ -2,9 +2,11 @@ using System.Diagnostics;
 using AntdUI;
 using Logistics.Client.Application.Contracts.Auth;
 using Logistics.Client.Application.Interfaces;
+using Logistics.Client.Application.Permissions;
 using Logistics.Client.WinForms.Controls.Common;
 using Logistics.Client.WinForms.Helpers;
 using Logistics.Client.WinForms.Themes;
+using Logistics.Shared.Contracts.DevData;
 using Microsoft.Extensions.Logging;
 using Label = System.Windows.Forms.Label;
 
@@ -14,15 +16,22 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
 {
     private readonly IAuthSessionApiClient _authSessionApi;
     private readonly IAuthenticationService _authService;
+    private readonly IAuthorizationService _authorization;
     private readonly IClientSettingsService _settingsService;
     private readonly IHealthApiClient _healthClient;
+    private readonly IDevTestDataApiClient _devTestDataClient;
     private readonly ILogger<SettingsWorkspaceControl> _logger;
 
     private readonly AntdUI.Tabs _tabs;
     private AntdUI.Panel _profileCard = null!;
     private AntdUI.TabPage _configTab = null!;
     private AntdUI.Panel _configCard = null!;
+    private AntdUI.TabPage? _devSeedTab;
+    private AntdUI.Panel? _devControlCard;
+    private PagedDataGridControl? _devCoverageGrid;
     private readonly Label _profileSummaryLabel = new() { AutoSize = true, Font = AppTheme.BodyFont, BackColor = Color.Transparent };
+    private readonly Label _devEnvSummaryLabel = new() { AutoSize = true, Font = AppTheme.BodyFont, BackColor = Color.Transparent };
+    private readonly Label _devResultLabel = new() { AutoSize = true, Font = AppTheme.SmallFont, BackColor = Color.Transparent };
     private readonly PagedDataGridControl _sessionsGrid;
 
     private AntdUI.Select _envCombo = null!;
@@ -31,17 +40,26 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
     private AntdUI.Select _langCombo = null!;
     private AntdUI.Select _themeCombo = null!;
 
+    private AntdUI.Select? _seedModeCombo;
+    private AntdUI.Select? _seedScaleCombo;
+    private AntdUI.InputNumber? _randomSeedBox;
+    private AntdUI.Input? _modulesInput;
+
     public SettingsWorkspaceControl(
         IAuthSessionApiClient authSessionApi,
         IAuthenticationService authService,
+        IAuthorizationService authorization,
         IClientSettingsService settingsService,
         IHealthApiClient healthClient,
+        IDevTestDataApiClient devTestDataClient,
         ILogger<SettingsWorkspaceControl> logger)
     {
         _authSessionApi = authSessionApi;
         _authService = authService;
+        _authorization = authorization;
         _settingsService = settingsService;
         _healthClient = healthClient;
+        _devTestDataClient = devTestDataClient;
         _logger = logger;
 
         Padding = new Padding(8);
@@ -93,8 +111,105 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
         BuildConfigTab(_configTab);
 
         _tabs.Pages.AddRange([profileTab, sessionsTab, _configTab]);
+
+        // Tab 4: Development Test Data Manager (strictly visible only in Development for authorized admins)
+        if (CanShowDevTestDataTab())
+        {
+            _devSeedTab = new AntdUI.TabPage { Text = "Dữ liệu Test (Dev)", Padding = new Padding(12) };
+            BuildDevSeedTab(_devSeedTab);
+            _tabs.Pages.Add(_devSeedTab);
+        }
+
         Controls.Add(_tabs);
         ApplyTheme();
+    }
+
+    private bool CanShowDevTestDataTab()
+    {
+        var isDevClient = string.Equals(_settingsService.Settings.Environment, "Development", StringComparison.OrdinalIgnoreCase);
+        var isAdmin = _authorization.IsInRole(ClientPermissions.Roles.SuperAdmin)
+                      || _authorization.HasPermission(ClientPermissions.Configuration.SettingsManage);
+        return isDevClient && isAdmin;
+    }
+
+    private void BuildDevSeedTab(AntdUI.TabPage tab)
+    {
+        _devControlCard = AppTheme.CreateCardPanel(new Padding(16));
+        _devControlCard.Dock = DockStyle.Top;
+        _devControlCard.Height = 205;
+
+        _devEnvSummaryLabel.Dock = DockStyle.Top;
+        _devEnvSummaryLabel.Text = "Đang tải trạng thái cơ sở dữ liệu phát triển...";
+        _devEnvSummaryLabel.Padding = new Padding(0, 0, 0, 8);
+
+        var controlsFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            WrapContents = true,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 4, 0, 6)
+        };
+
+        _seedModeCombo = new AntdUI.Select { Width = 195, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 4, 8, 4) };
+        _seedModeCombo.Items.AddRange([
+            new SelectItem("FullSeed (Đầy đủ)", DevSeedMode.FullSeed),
+            new SelectItem("Incremental (Bổ sung)", DevSeedMode.Incremental),
+            new SelectItem("ResetAndReseed (Làm mới)", DevSeedMode.ResetAndReseed),
+            new SelectItem("ModuleSpecific (Theo module)", DevSeedMode.ModuleSpecific)
+        ]);
+        _seedModeCombo.SelectedValue = DevSeedMode.FullSeed;
+
+        _seedScaleCombo = new AntdUI.Select { Width = 155, Height = 34, Radius = 6, List = true, Font = AppTheme.BodyFont, Margin = new Padding(0, 4, 8, 4) };
+        _seedScaleCombo.Items.AddRange([
+            new SelectItem("Standard (~600 đơn)", DevSeedScale.Standard),
+            new SelectItem("Large (~950 đơn)", DevSeedScale.Large)
+        ]);
+        _seedScaleCombo.SelectedValue = DevSeedScale.Standard;
+
+        _randomSeedBox = new AntdUI.InputNumber { Width = 95, Height = 34, Radius = 6, Minimum = 1, Maximum = 999999, DecimalPlaces = 0, Value = 42, Font = AppTheme.BodyFont, Margin = new Padding(0, 4, 8, 4) };
+
+        _modulesInput = new AntdUI.Input
+        {
+            Width = 220,
+            Height = 34,
+            Radius = 6,
+            PlaceholderText = "Modules (vd: SalesShipping,Finance,COD)",
+            Font = AppTheme.BodyFont,
+            Margin = new Padding(0, 4, 8, 4)
+        };
+
+        var runBtn = AppTheme.CreatePrimaryButton("Chạy Seed dữ liệu", 150);
+        runBtn.Margin = new Padding(0, 4, 8, 4);
+        runBtn.Click += async (_, _) => await ExecuteDevSeedAsync(runBtn);
+
+        var verifyBtn = AppTheme.CreateSecondaryButton("Kiểm tra toàn vẹn", 145);
+        verifyBtn.Margin = new Padding(0, 4, 8, 4);
+        verifyBtn.Click += async (_, _) => await VerifyDevIntegrityAsync(verifyBtn);
+
+        controlsFlow.Controls.AddRange([_seedModeCombo, _seedScaleCombo, _randomSeedBox, _modulesInput, runBtn, verifyBtn]);
+
+        _devResultLabel.Dock = DockStyle.Top;
+        _devResultLabel.Padding = new Padding(0, 4, 0, 0);
+        _devResultLabel.Text = "Sẵn sàng. Lưu ý: ResetAndReseed chỉ khả dụng ở môi trường Development và có xác nhận.";
+
+        _devControlCard.Controls.Add(_devResultLabel);
+        _devControlCard.Controls.Add(controlsFlow);
+        _devControlCard.Controls.Add(_devEnvSummaryLabel);
+        AppTheme.BindAutoHeightCard(_devControlCard, 195);
+
+        _devCoverageGrid = new PagedDataGridControl(
+            "Ma trận dữ liệu hiện tại theo Module / Bảng",
+            "Số lượng bản ghi thực tế so với mục tiêu Standard & Large.",
+            showSearch: false,
+            showPagination: false);
+        _devCoverageGrid.Margin = new Padding(0, 10, 0, 0);
+        _devCoverageGrid.ReloadRequested += async (_, _) => await LoadDevStatusAsync();
+
+        var spacer = new System.Windows.Forms.Panel { Dock = DockStyle.Top, Height = 10, BackColor = Color.Transparent };
+        tab.Controls.Add(_devCoverageGrid);
+        tab.Controls.Add(spacer);
+        tab.Controls.Add(_devControlCard);
     }
 
     private void BuildConfigTab(AntdUI.TabPage tab)
@@ -184,6 +299,92 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
         _langCombo.SelectedValue = string.Equals(s.Culture, "en-US", StringComparison.OrdinalIgnoreCase) ? "en-US" : "vi-VN";
         _themeCombo.SelectedValue = AppTheme.CurrentMode.ToString();
         await LoadSessionsAsync();
+        if (_devSeedTab != null)
+            await LoadDevStatusAsync();
+    }
+
+    private async Task LoadDevStatusAsync()
+    {
+        if (_devCoverageGrid == null) return;
+
+        await UiAsyncRunner.RunSafeAsync(this, async () =>
+        {
+            _devCoverageGrid.SetLoading(true);
+            var status = await _devTestDataClient.GetStatusAsync();
+            var lastRun = status.LastSeededAtUtc.HasValue
+                ? $"{status.LastSeededAtUtc.Value.ToLocalTime():dd/MM/yyyy HH:mm:ss} ({status.LastSeedMode}/{status.LastSeedScale})"
+                : "Chưa có lịch sử chạy thủ công";
+
+            _devEnvSummaryLabel.Text =
+                $"Môi trường API: {status.EnvironmentName} (DevSeed: {(status.IsDevSeedEnabled ? "ENABLED" : "DISABLED")}) | " +
+                $"Database: {status.DatabaseServer} / {status.DatabaseName}\n" +
+                $"Tổng bản ghi hiện có: {status.TotalRecordsAcrossModules:N0} | Lần chạy gần nhất: {lastRun}";
+
+            _devCoverageGrid.BindListData(status.Modules);
+        }, logger: _logger, showMessageBoxOnError: false);
+
+        _devCoverageGrid.SetLoading(false);
+    }
+
+    private async Task ExecuteDevSeedAsync(Control triggerBtn)
+    {
+        if (_seedModeCombo == null || _seedScaleCombo == null || _randomSeedBox == null) return;
+
+        var mode = _seedModeCombo.SelectedValue is DevSeedMode m ? m : DevSeedMode.FullSeed;
+        var scale = _seedScaleCombo.SelectedValue is DevSeedScale sc ? sc : DevSeedScale.Standard;
+        var seed = (int)_randomSeedBox.Value;
+
+        if (mode == DevSeedMode.ResetAndReseed)
+        {
+            if (!UiAsyncRunner.Confirm(this,
+                "CẢNH BÁO: ResetAndReseed sẽ XÓA toàn bộ dữ liệu nghiệp vụ hiện tại trong database Development và tạo lại từ đầu (giữ nguyên Roles/Permissions & admin).\n\nBạn chắc chắn muốn tiếp tục?"))
+            {
+                return;
+            }
+        }
+
+        IReadOnlyList<string>? modules = null;
+        if (mode == DevSeedMode.ModuleSpecific && !string.IsNullOrWhiteSpace(_modulesInput?.Text))
+        {
+            modules = _modulesInput.Text
+                .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+        }
+
+        await UiAsyncRunner.RunSafeAsync(this, async () =>
+        {
+            _devResultLabel.Text = "Đang thực thi tạo dữ liệu phát triển... vui lòng đợi.";
+            var res = await _devTestDataClient.ExecuteAsync(new ExecuteDevSeedRequest
+            {
+                Mode = mode,
+                Scale = scale,
+                RandomSeed = seed,
+                ConfirmReset = mode == DevSeedMode.ResetAndReseed,
+                Modules = modules
+            });
+
+            var integrityTxt = res.IntegrityReport?.AllPassed == true
+                ? "Toàn vẹn dữ liệu: ĐẠT 100%"
+                : $"Cảnh báo toàn vẹn: {res.IntegrityReport?.Checks.Count(c => !c.Passed) ?? 0} mục cần kiểm tra";
+            _devResultLabel.Text = $"{res.Summary} | {integrityTxt}";
+            _devCoverageGrid?.BindListData(res.UpdatedCoverage);
+            await LoadDevStatusAsync();
+            UiAsyncRunner.ShowInfo(this, $"{res.Summary}\n\n{integrityTxt}", "Dev Test Data");
+        }, triggerBtn, logger: _logger);
+    }
+
+    private async Task VerifyDevIntegrityAsync(Control triggerBtn)
+    {
+        await UiAsyncRunner.RunSafeAsync(this, async () =>
+        {
+            var report = await _devTestDataClient.VerifyIntegrityAsync();
+            var lines = report.Checks.Select(c =>
+                $"[{(c.Passed ? "PASS" : "FAIL")}] {c.Category} - {c.CheckName}: {c.Details}");
+            _devResultLabel.Text = report.AllPassed
+                ? $"Kiểm tra toàn vẹn lúc {report.CheckedAtUtc.ToLocalTime():HH:mm:ss}: ĐẠT TẤT CẢ ({report.Checks.Count}/{report.Checks.Count})."
+                : $"Kiểm tra toàn vẹn: Phát hiện {report.Checks.Count(c => !c.Passed)} lỗi!";
+            UiAsyncRunner.ShowInfo(this, string.Join("\n", lines), "Báo cáo Toàn vẹn Dữ liệu");
+        }, triggerBtn, logger: _logger);
     }
 
     private void RenderProfile()
@@ -253,5 +454,12 @@ public sealed class SettingsWorkspaceControl : ModuleViewBase, IThemeAware
         _profileSummaryLabel.ForeColor = AppTheme.TextPrimary;
         _configCard.Back = AppTheme.CardBg;
         _configCard.BorderColor = AppTheme.BorderSubtle;
+        if (_devControlCard != null)
+        {
+            _devControlCard.Back = AppTheme.CardBg;
+            _devControlCard.BorderColor = AppTheme.BorderSubtle;
+            _devEnvSummaryLabel.ForeColor = AppTheme.TextPrimary;
+            _devResultLabel.ForeColor = AppTheme.TextSecondary;
+        }
     }
 }

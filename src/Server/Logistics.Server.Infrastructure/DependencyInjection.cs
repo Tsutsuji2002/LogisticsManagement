@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IUserManagementService, UserManagementService>();
         services.AddScoped<IIdentityDataSeeder, IdentityDataSeeder>();
         services.AddScoped<DevDataSeeder>();
+        services.AddScoped<IDevTestDataService>(sp => sp.GetRequiredService<DevDataSeeder>());
         services.AddScoped<IAuditService, AuditService>();
 
         // Domain Module Services
